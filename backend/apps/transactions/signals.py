@@ -5,11 +5,11 @@ from django.conf import settings
 from .models import Transaction
 
 def is_credit_transaction(tx):
-    if tx.type in ['DEPOSIT', 'PROFIT', 'REFERRAL_BONUS']:
-        return True
-    if tx.type == 'ADMIN_ADJUSTMENT' and tx.amount > 0:
-        return True
-    return False
+    if tx.type in ['WITHDRAWAL', 'INVESTMENT', 'FEE']:
+        return False
+    if tx.type == 'ADMIN_ADJUSTMENT' and tx.amount < 0:
+        return False
+    return True
 
 def send_transaction_email(tx):
     user = tx.user
@@ -24,14 +24,14 @@ def send_transaction_email(tx):
         except Exception:
             pass
         
-    subject = f"{action_type}: {tx.amount:.2f} {tx.currency} at Cryptic Verse"
+    subject = f"{action_type}: {abs(tx.amount):.2f} {tx.currency} at Cryptic Verse"
     
     message = (
         f"Dear {user.full_name or user.username},\n\n"
         f"This is a notification for a transaction on your account:\n\n"
         f"Transaction Type: {tx.type}\n"
         f"Transaction Status: {tx.status}\n"
-        f"Amount: {tx.amount:.2f} {tx.currency}\n"
+        f"Amount: {abs(tx.amount):.2f} {tx.currency}\n"
         f"Description: {tx.description or 'N/A'}\n"
         f"Date: {tx.created_at.strftime('%Y-%m-%d %H:%M:%S UTC') if tx.created_at else 'Just now'}\n\n"
         f"{wallet_balance_str}\n\n"

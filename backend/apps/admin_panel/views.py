@@ -113,6 +113,98 @@ class AdminUserViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminUserToken]
     queryset = User.objects.all()
 
+    def perform_update(self, serializer):
+        old_user = self.get_object()
+        
+        # Save old values
+        old_balance = old_user.balance
+        old_profit_balance = old_user.profit_balance
+        old_active_investment = old_user.active_investment_override
+        old_profit_accrued = old_user.profit_accrued_override
+        old_referral_bonus = old_user.referral_bonus_override
+        
+        # Save the user updates
+        user = serializer.save()
+        
+        from transactions.models import Transaction
+        from wallets.models import Wallet
+        
+        # 1. Available Balance
+        if old_balance != user.balance:
+            diff = user.balance - old_balance
+            wallet, _ = Wallet.objects.get_or_create(user=user, currency='USDT')
+            Transaction.objects.create(
+                user=user,
+                wallet=wallet,
+                type='ADMIN_ADJUSTMENT',
+                amount=diff,
+                currency='USDT',
+                description=f"Admin available balance adjustment: {'Incremented' if diff > 0 else 'Decremented'} from {old_balance:.2f} to {user.balance:.2f}",
+                status='COMPLETED'
+            )
+
+        # 2. Daily Reward (profit_balance)
+        if old_profit_balance != user.profit_balance:
+            diff = user.profit_balance - old_profit_balance
+            wallet, _ = Wallet.objects.get_or_create(user=user, currency='USDT')
+            Transaction.objects.create(
+                user=user,
+                wallet=wallet,
+                type='PROFIT' if diff > 0 else 'ADMIN_ADJUSTMENT',
+                amount=diff,
+                currency='USDT',
+                description=f"Admin daily reward adjustment: {'Incremented' if diff > 0 else 'Decremented'} from {old_profit_balance:.2f} to {user.profit_balance:.2f}",
+                status='COMPLETED'
+            )
+
+        # 3. Active Investment
+        old_active_val = old_active_investment or Decimal('0.0')
+        new_active_val = user.active_investment_override or Decimal('0.0')
+        if old_active_val != new_active_val:
+            diff = new_active_val - old_active_val
+            wallet, _ = Wallet.objects.get_or_create(user=user, currency='USDT')
+            Transaction.objects.create(
+                user=user,
+                wallet=wallet,
+                type='INVESTMENT' if diff < 0 else 'ADMIN_ADJUSTMENT',
+                amount=diff,
+                currency='USDT',
+                description=f"Admin active investment adjustment: {'Incremented' if diff > 0 else 'Decremented'} from {old_active_val:.2f} to {new_active_val:.2f}",
+                status='COMPLETED'
+            )
+
+        # 4. Profit Accrued
+        old_accrued_val = old_profit_accrued or Decimal('0.0')
+        new_accrued_val = user.profit_accrued_override or Decimal('0.0')
+        if old_accrued_val != new_accrued_val:
+            diff = new_accrued_val - old_accrued_val
+            wallet, _ = Wallet.objects.get_or_create(user=user, currency='USDT')
+            Transaction.objects.create(
+                user=user,
+                wallet=wallet,
+                type='PROFIT' if diff > 0 else 'ADMIN_ADJUSTMENT',
+                amount=diff,
+                currency='USDT',
+                description=f"Admin profit accrued adjustment: {'Incremented' if diff > 0 else 'Decremented'} from {old_accrued_val:.2f} to {new_accrued_val:.2f}",
+                status='COMPLETED'
+            )
+
+        # 5. Referral Bonus
+        old_referral_val = old_referral_bonus or Decimal('0.0')
+        new_referral_val = user.referral_bonus_override or Decimal('0.0')
+        if old_referral_val != new_referral_val:
+            diff = new_referral_val - old_referral_val
+            wallet, _ = Wallet.objects.get_or_create(user=user, currency='USDT')
+            Transaction.objects.create(
+                user=user,
+                wallet=wallet,
+                type='REFERRAL_BONUS' if diff > 0 else 'ADMIN_ADJUSTMENT',
+                amount=diff,
+                currency='USDT',
+                description=f"Admin referral bonus adjustment: {'Incremented' if diff > 0 else 'Decremented'} from {old_referral_val:.2f} to {new_referral_val:.2f}",
+                status='COMPLETED'
+            )
+
     @action(detail=True, methods=['post'], url_path='freeze')
     def toggle_freeze(self, request, pk=None):
         user = self.get_object()
