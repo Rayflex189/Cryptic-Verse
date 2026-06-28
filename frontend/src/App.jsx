@@ -1,0 +1,86 @@
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
+import { ThemeProvider } from './contexts/ThemeContext';
+
+// Components
+import Navbar from './components/Navbar';
+import Footer from './components/Footer';
+import ProtectedRoute from './components/ProtectedRoute';
+import AdminRoute from './components/AdminRoute';
+
+// User Pages
+import Home from './pages/Home/Home';
+import Login from './pages/Auth/Login';
+import Register from './pages/Auth/Register';
+import VerifyEmail from './pages/Auth/VerifyEmail';
+import ResetPassword from './pages/Auth/ResetPassword';
+import Dashboard from './pages/Dashboard/Dashboard';
+import Wallet from './pages/Wallet/Wallet';
+import Deposit from './pages/Deposit/Deposit';
+import Withdraw from './pages/Withdraw/Withdraw';
+import Invest from './pages/Invest/Invest';
+import KYC from './pages/KYC/KYC';
+import Support from './pages/Support/Support';
+import Profile from './pages/Profile/Profile';
+import DemoOne from './components/ui/demo';
+import UpgradeVIP from './pages/UpgradeVIP/UpgradeVIP';
+
+// Admin Pages
+import AdminLogin from './pages/Admin/AdminLogin';
+import AdminDashboard from './pages/Admin/AdminDashboard';
+
+// Layout wrapper to conditionally show Navbar/Footer
+const AppLayout = () => {
+  const location = useLocation();
+  const isAdminPath = location.pathname.startsWith('/admin');
+  const isDemoPath = location.pathname === '/demo';
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-[#0b0f19] dark:text-gray-100 flex flex-col transition-colors duration-300">
+      {!isAdminPath && !isDemoPath && <Navbar />}
+      <div className="flex-grow">
+        <Routes>
+          {/* Public Routes */}
+          <Route path="/" element={<Home />} />
+          <Route path="/demo" element={<DemoOne />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+
+          {/* User Protected Routes */}
+          <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/wallets" element={<ProtectedRoute><Wallet /></ProtectedRoute>} />
+          <Route path="/deposit" element={<ProtectedRoute><Deposit /></ProtectedRoute>} />
+          <Route path="/withdraw" element={<ProtectedRoute><Withdraw /></ProtectedRoute>} />
+          <Route path="/upgrade-vip" element={<ProtectedRoute><UpgradeVIP /></ProtectedRoute>} />
+
+          <Route path="/invest" element={<ProtectedRoute><Invest /></ProtectedRoute>} />
+          <Route path="/kyc" element={<ProtectedRoute><KYC /></ProtectedRoute>} />
+          <Route path="/support" element={<ProtectedRoute><Support /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+
+          {/* Admin Routes */}
+          <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/admin/dashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+        </Routes>
+      </div>
+      {!isAdminPath && !isDemoPath && <Footer />}
+    </div>
+  );
+};
+
+function App() {
+  return (
+    <ThemeProvider>
+      <AuthProvider>
+        <Router>
+          <AppLayout />
+        </Router>
+      </AuthProvider>
+    </ThemeProvider>
+  );
+}
+
+export default App;

@@ -1,0 +1,408 @@
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../hooks/useAuth';
+import api from '../../api/api';
+import { ArrowLeft, Play, RefreshCw, Layers, Sparkles, HelpCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+
+const Invest = () => {
+  const { user, fetchUserMe } = useAuth();
+  const [plans, setPlans] = useState([]);
+  const [investments, setInvestments] = useState([]);
+  const [wallets, setWallets] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Modal investment form states
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState(null);
+  const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState('USDT');
+  const [autoReinvest, setAutoReinvest] = useState(false);
+
+  const [submitting, setSubmitting] = useState(false);
+  const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      const [planRes, invRes, walletRes] = await Promise.all([
+        api.get('investment-plans/'),
+        api.get('investments/'),
+        api.get('wallets/')
+      ]);
+      setPlans(planRes.data);
+      setInvestments(invRes.data);
+      setWallets(walletRes.data);
+      setLoading(false);
+    } catch (err) {
+      console.error(err);
+      setLoading(false);
+    }
+  };
+
+  const openInvestModal = (plan) => {
+    setSelectedPlan(plan);
+    setAmount(plan.min_deposit);
+    setCurrency('USDT');
+    setAutoReinvest(false);
+    setErrorMsg('');
+    setSuccessMsg('');
+    setModalOpen(true);
+  };
+
+  const closeInvestModal = () => {
+    setModalOpen(false);
+    setSelectedPlan(null);
+  };
+
+  const handleInvest = async (e) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    if (user?.is_frozen) {
+      setErrorMsg('Your account is frozen. Investments are disabled.');
+      return;
+    }
+
+    const currentWallet = wallets.find((w) => w.currency === currency);
+    if (!currentWallet || parseFloat(currentWallet.balance) < parseFloat(amount)) {
+      setErrorMsg(`Insufficient funds in your ${currency} wallet. Available balance: ${currentWallet?.balance || 0}`);
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await api.post('investments/', {
+        plan: selectedPlan.id,
+        amount,
+        currency,
+        auto_reinvest: autoReinvest
+      });
+      setSuccessMsg('Investment successful! Your daily yields have started.');
+      setTimeout(() => {
+        closeInvestModal();
+        fetchUserMe();
+        fetchData();
+      }, 1500);
+    } catch (err) {
+      setErrorMsg(err.response?.data?.non_field_errors?.[0] || err.response?.data?.error || 'Investment transaction failed.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleToggleReinvest = async (id) => {
+    try {
+      await api.post(`investments/${id}/reinvest/`);
+      fetchData();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleWithdrawProfit = async (id) => {
+    try {
+      const res = await api.post(`investments/${id}/withdraw-profit/`);
+      alert(res.data.message);
+      fetchUserMe();
+      fetchData();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to withdraw profit.');
+    }
+  };
+
+  // Calculate percentage progress of investment maturity
+  const calculateProgress = (startDateStr, endDateStr) => {
+    const start = new Date(startDateStr).getTime();
+    const end = new Date(endDateStr).getTime();
+    const now = new Date().getTime();
+
+    if (now >= end) return 100;
+    if (now <= start) return 0;
+
+    const total = end - start;
+    const progress = now - start;
+    return Math.round((progress / total) * 100);
+  };
+
+  const activeInvestments = investments.filter((i) => i.status === 'ACTIVE');
+  const pastInvestments = investments.filter((i) => i.status !== 'ACTIVE');
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-transparent">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-cyanAccent border-t-transparent"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 min-h-[calc(100vh-4rem)] text-left relative">
+      <Link to="/dashboard" className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white transition mb-6">
+        <ArrowLeft size={14} /> Back to Dashboard
+      </Link>
+
+      <h1 className="text-2xl font-black text-slate-900 dark:text-white mb-8">Investment Portal</h1>
+
+      {/* Plans List */}
+      <div className="mb-12">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-6 uppercase tracking-wider flex items-center gap-2">
+          <Sparkles size={18} className="text-cyanAccent" /> Active Investment Plans
+        </h2>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {plans.map((plan) => (
+            <div key={plan.id} className="glass-panel p-6 sm:p-8 rounded-xl flex flex-col justify-between hover:border-cyanAccent/50 transition duration-300 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 h-24 w-24 bg-cyanAccent/5 rounded-bl-full group-hover:bg-cyanAccent/10 transition"></div>
+              
+              <div>
+                <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-cyanAccent/10 text-cyanAccent border border-cyanAccent/20">
+                  {plan.compounding ? 'Compound Return' : 'Fixed Return'}
+                </span>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white mt-4">{plan.name}</h3>
+                
+                <div className="mt-6 space-y-3 text-xs text-slate-500 dark:text-gray-400">
+                  <div className="flex justify-between border-b border-slate-200 dark:border-gray-800 pb-2">
+                    <span>Daily Profit:</span>
+                    <span className="font-bold text-emeraldAccent">+{plan.daily_profit_percent}%</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-200 dark:border-gray-800 pb-2">
+                    <span>Min Investment:</span>
+                    <span className="font-semibold text-slate-900 dark:text-white">${parseFloat(plan.min_deposit).toLocaleString()} USDT</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-200 dark:border-gray-800 pb-2">
+                    <span>Max Investment:</span>
+                    <span className="font-semibold text-slate-900 dark:text-white">${parseFloat(plan.max_deposit).toLocaleString()} USDT</span>
+                  </div>
+                  <div className="flex justify-between pb-2">
+                    <span>Duration:</span>
+                    <span className="font-semibold text-slate-900 dark:text-white">{plan.duration_days} Days</span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => openInvestModal(plan)}
+                className="w-full mt-8 rounded bg-gradient-to-r from-cyanAccent to-emeraldAccent py-3 text-xs font-bold text-black hover:opacity-90 transition flex items-center justify-center gap-1"
+              >
+                <Play size={14} className="fill-current" /> Invest In Plan
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Active Investments */}
+      <div className="mb-12">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-6 uppercase tracking-wider flex items-center gap-2">
+          <Layers size={18} className="text-emeraldAccent" /> Your Active Investments
+        </h2>
+
+        {activeInvestments.length === 0 ? (
+          <div className="glass-panel p-8 text-center text-xs text-gray-500 rounded-xl">
+            You do not have any active investments currently. Invest in a plan above to start earning yields.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {activeInvestments.map((inv) => {
+              const progress = calculateProgress(inv.start_date, inv.end_date);
+              return (
+                <div key={inv.id} className="glass-panel p-6 rounded-xl space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">{inv.plan_details?.name}</h4>
+                      <span className="text-[10px] text-gray-500 font-mono">ID: INV-{inv.id}</span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-emeraldAccent/15 text-emeraldAccent border border-emeraldAccent/20">
+                      Accruing
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 text-xs">
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Principal Amount</span>
+                      <span className="font-bold text-slate-900 dark:text-white">${parseFloat(inv.amount).toFixed(2)} {inv.currency}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Accrued Profit</span>
+                      <span className="font-bold text-emeraldAccent">+${parseFloat(inv.profit_accrued).toFixed(6)} {inv.currency}</span>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div>
+                    <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                      <span>Maturity progress: {progress}%</span>
+                      <span>Matures: {new Date(inv.end_date).toLocaleDateString()}</span>
+                    </div>
+                    <div className="w-full bg-slate-200 dark:bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                      <div className="bg-cyanAccent h-1.5 rounded-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
+                    </div>
+                  </div>
+
+                  {/* Compounding & Auto-reinvest settings */}
+                  <div className="flex justify-between items-center text-xs pt-2 border-t border-slate-200 dark:border-gray-800">
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={inv.auto_reinvest}
+                        onChange={() => handleToggleReinvest(inv.id)}
+                        className="rounded border-slate-300 dark:border-gray-700 bg-slate-100 dark:bg-gray-900 text-cyanAccent focus:ring-0 focus:ring-offset-0 h-4 w-4"
+                      />
+                      <span className="text-slate-500 dark:text-gray-400 text-[11px]">Auto Reinvest on Maturity</span>
+                    </label>
+
+                    <button
+                      onClick={() => handleWithdrawProfit(inv.id)}
+                      disabled={parseFloat(inv.profit_accrued) <= 0}
+                      className="px-3 py-1 bg-emeraldAccent text-black font-bold text-[10px] rounded hover:opacity-90 transition disabled:opacity-50"
+                    >
+                      Withdraw Profit
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Completed Investments history */}
+      {pastInvestments.length > 0 && (
+        <div className="glass-panel p-6 rounded-xl">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-6">Completed Investments</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 dark:border-gray-850 text-slate-550 dark:text-gray-400 font-semibold">
+                  <th className="pb-3">ID</th>
+                  <th className="pb-3">Plan</th>
+                  <th className="pb-3">Amount</th>
+                  <th className="pb-3">Accrued Profit</th>
+                  <th className="pb-3">Start Date</th>
+                  <th className="pb-3">End Date</th>
+                  <th className="pb-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-150 dark:divide-gray-800/45 text-slate-700 dark:text-gray-300">
+                {pastInvestments.map((inv) => (
+                  <tr key={inv.id}>
+                    <td className="py-3 text-gray-500 font-mono">INV-{inv.id}</td>
+                    <td className="py-3 font-semibold text-slate-900 dark:text-white">{inv.plan_details?.name}</td>
+                    <td className="py-3">${parseFloat(inv.amount).toFixed(2)} {inv.currency}</td>
+                    <td className="py-3 text-emeraldAccent">+${parseFloat(inv.profit_accrued).toFixed(2)}</td>
+                    <td className="py-3 text-gray-550">{new Date(inv.start_date).toLocaleDateString()}</td>
+                    <td className="py-3 text-gray-550">{new Date(inv.end_date).toLocaleDateString()}</td>
+                    <td className="py-3">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        inv.status === 'COMPLETED' ? 'bg-slate-200 dark:bg-gray-800 text-slate-500 dark:text-gray-400' : 'bg-red-400/15 text-red-400'
+                      }`}>
+                        {inv.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Investment Modal */}
+      {modalOpen && selectedPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md glass-panel p-6 sm:p-8 rounded-xl relative border border-slate-200 dark:border-gray-805 shadow-2xl">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Invest in {selectedPlan.name}</h3>
+            <p className="text-xs text-gray-400 mb-6">
+              Expected Daily Yield: <span className="text-emeraldAccent font-bold">+{selectedPlan.daily_profit_percent}%</span>. Principal locks for {selectedPlan.duration_days} days.
+            </p>
+
+            {errorMsg && (
+              <div className="rounded bg-red-950/30 border border-red-500/50 p-3 text-[11px] text-red-200 mb-4">
+                {errorMsg}
+              </div>
+            )}
+
+            {successMsg && (
+              <div className="rounded bg-emerald-950/30 border border-emerald-500/50 p-3 text-[11px] text-emerald-200 mb-4">
+                {successMsg}
+              </div>
+            )}
+
+            <form onSubmit={handleInvest} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-400 block mb-1">Select Investment Currency</label>
+                <select
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value)}
+                  className="w-full rounded p-3 text-xs glass-input"
+                >
+                  <option value="USDT">USDT (ERC-20)</option>
+                  <option value="BTC">Bitcoin (BTC)</option>
+                  <option value="ETH">Ethereum (ETH)</option>
+                  <option value="BNB">Binance Coin (BNB)</option>
+                  <option value="SOL">Solana (SOL)</option>
+                </select>
+                <span className="text-[10px] text-gray-500 mt-1 block">
+                  Available: {parseFloat(wallets.find(w => w.currency === currency)?.balance || 0).toFixed(6)} {currency}
+                </span>
+              </div>
+
+              <div>
+                <label htmlFor="modalAmount" className="text-xs font-semibold text-gray-400 block mb-1">
+                  Investment Amount
+                </label>
+                <input
+                  id="modalAmount"
+                  type="number"
+                  step="any"
+                  required
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="w-full rounded p-3 text-xs glass-input"
+                  placeholder="500"
+                />
+                <span className="text-[10px] text-gray-500 mt-1 block">
+                  Min: ${selectedPlan.min_deposit} | Max: ${selectedPlan.max_deposit.toLocaleString()} USDT
+                </span>
+              </div>
+
+              <label className="flex items-center space-x-2 cursor-pointer py-2">
+                <input
+                  type="checkbox"
+                  checked={autoReinvest}
+                  onChange={(e) => setAutoReinvest(e.target.checked)}
+                  className="rounded border-gray-700 bg-gray-900 text-cyanAccent focus:ring-0 focus:ring-offset-0 h-4 w-4"
+                />
+                <span className="text-gray-300 text-xs font-semibold">Auto Reinvest on Maturity</span>
+              </label>
+
+              <div className="flex gap-4 pt-4">
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="flex-1 rounded bg-gradient-to-r from-cyanAccent to-emeraldAccent py-3 text-xs font-bold text-black hover:opacity-90 transition disabled:opacity-50"
+                >
+                  {submitting ? 'Processing...' : 'Confirm & Purchase'}
+                </button>
+                <button
+                  type="button"
+                  onClick={closeInvestModal}
+                  className="flex-1 rounded border border-gray-700 py-3 text-xs font-bold text-white hover:bg-gray-800 transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Invest;

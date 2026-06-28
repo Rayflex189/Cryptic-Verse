@@ -1,0 +1,194 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-darkBg: #0b0f19;
+  --color-dark-bg: #0b0f19;
+  
+  --color-darkCard: #111827;
+  --color-dark-card: #111827;
+  
+  --color-cyanAccent: #10b981;
+  --color-cyan-accent: #10b981;
+  
+  --color-emeraldAccent: #059669;
+  --color-emerald-accent: #059669;
+  
+  --color-goldAccent: #fbbf24;
+  --color-gold-accent: #fbbf24;
+
+  --font-sans: "Plus Jakarta Sans", "Inter", sans-serif;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 dark:bg-darkBg dark:text-gray-100 font-sans antialiased transition-colors duration-300;
+}
+
+/* Glassmorphism utility classes */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.03);
+}
+
+.dark .glass-panel {
+  background: rgba(17, 24, 39, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+
+.glass-panel-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-panel-hover:hover {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(6, 182, 212, 0.4);
+  box-shadow: 0 10px 25px -5px rgba(6, 182, 212, 0.08), 0 8px 10px -6px rgba(6, 182, 212, 0.08);
+}
+
+.dark .glass-panel-hover:hover {
+  background: rgba(17, 24, 39, 0.85);
+  border-color: rgba(6, 182, 212, 0.4);
+  box-shadow: 0 10px 25px -5px rgba(6, 182, 212, 0.15), 0 8px 10px -6px rgba(6, 182, 212, 0.15);
+}
+
+.glass-input {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  color: #0f172a;
+  transition: all 0.2s;
+}
+
+.dark .glass-input {
+  background: rgba(31, 41, 55, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.glass-input:focus {
+  background: #ffffff;
+  border-color: #06b6d4;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.2);
+}
+
+.dark .glass-input:focus {
+  background: rgba(31, 41, 55, 0.8);
+  border-color: #06b6d4;
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.2);
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #0b0f19;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.15);
+  border-radius: 3px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 23, 42, 0.25);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Glow effects */
+.glow-cyan {
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.08);
+}
+
+.dark .glow-cyan {
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.15);
+}
+
+.glow-emerald {
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.08);
+}
+
+.dark .glow-emerald {
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
+}
+
+/* Custom camelCase theme class overrides for Tailwind v4 */
+.bg-darkBg {
+  background-color: #0b0f19 !important;
+}
+.dark .dark\:bg-darkBg {
+  background-color: #0b0f19 !important;
+}
+.bg-darkCard {
+  background-color: #111827 !important;
+}
+.dark .dark\:bg-darkCard {
+  background-color: #111827 !important;
+}
+.text-cyanAccent {
+  color: #10b981 !important;
+}
+.dark .dark\:text-cyanAccent {
+  color: #10b981 !important;
+}
+.bg-cyanAccent {
+  background-color: #10b981 !important;
+}
+.dark .dark\:bg-cyanAccent {
+  background-color: #10b981 !important;
+}
+.border-cyanAccent {
+  border-color: #10b981 !important;
+}
+.dark .dark\:border-cyanAccent {
+  border-color: #10b981 !important;
+}
+.text-emeraldAccent {
+  color: #059669 !important;
+}
+.dark .dark\:text-emeraldAccent {
+  color: #059669 !important;
+}
+.bg-emeraldAccent {
+  background-color: #059669 !important;
+}
+.dark .dark\:bg-emeraldAccent {
+  background-color: #059669 !important;
+}
+.border-emeraldAccent {
+  border-color: #059669 !important;
+}
+.dark .dark\:border-emeraldAccent {
+  border-color: #059669 !important;
+}
+.text-goldAccent {
+  color: #fbbf24 !important;
+}
+.dark .dark\:text-goldAccent {
+  color: #fbbf24 !important;
+}
+.bg-goldAccent {
+  background-color: #fbbf24 !important;
+}
+.dark .dark\:bg-goldAccent {
+  background-color: #fbbf24 !important;
+}
