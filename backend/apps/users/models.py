@@ -113,12 +113,14 @@ class User(AbstractUser):
 
         super().save(*args, **kwargs)
         
-        if is_balance_saved and old_balance is not None and old_balance != self.balance:
+        if is_balance_saved:
             from wallets.models import Wallet
-            wallet, _ = Wallet.objects.get_or_create(user=self, currency='USDT')
-            if wallet.balance != self.balance:
-                wallet.balance = self.balance
-                wallet.save(update_fields=['balance'])
+            wallet, created = Wallet.objects.get_or_create(user=self, currency='USDT')
+            if created or (old_balance is not None and old_balance != self.balance):
+                if wallet.balance != self.balance:
+                    wallet.balance = self.balance
+                    wallet.save(update_fields=['balance'])
+
 
 
 class VIPUpgradeRequest(models.Model):

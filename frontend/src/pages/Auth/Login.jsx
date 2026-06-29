@@ -19,7 +19,14 @@ const Login = () => {
   useEffect(() => {
     if (new URLSearchParams(location.search).get('verify_success') === 'true') {
       setVerifiedSuccess(true);
-      setShowPromo(true);
+      // Check if browser supports notifications on this device/mode
+      const supportsNotifications = 
+        'Notification' in window && 
+        (!/iPhone|iPad|iPod/.test(navigator.userAgent) || window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches);
+      
+      if (supportsNotifications) {
+        setShowPromo(true);
+      }
     }
   }, [location]);
 
@@ -31,12 +38,26 @@ const Login = () => {
     }
     
     try {
-      const permission = await Notification.requestPermission();
+      let permission;
+      // Some browsers return a promise, others only support a callback
+      const result = Notification.requestPermission();
+      if (result && typeof result.then === 'function') {
+        permission = await result;
+      } else {
+        permission = await new Promise((resolve) => {
+          Notification.requestPermission(resolve);
+        });
+      }
+
       if (permission === 'granted') {
         setNotificationMessage({ type: 'success', text: 'Notifications enabled successfully!' });
-        new Notification("Cryptic Verse", {
-          body: "Notifications enabled! You will receive credit and debit alerts here.",
-        });
+        try {
+          new Notification("Cryptic Verse", {
+            body: "Notifications enabled! You will receive credit and debit alerts here.",
+          });
+        } catch (e) {
+          console.warn("Notification instantiation failed", e);
+        }
       } else {
         setNotificationMessage({ type: 'error', text: 'Notification permission denied.' });
       }
@@ -45,6 +66,7 @@ const Login = () => {
       setNotificationMessage({ type: 'error', text: 'Failed to enable notifications.' });
     }
   };
+
 
   const handleSubmit = async (e) => {
     e.preventDefault();

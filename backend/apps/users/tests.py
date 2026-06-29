@@ -55,12 +55,18 @@ class UserAuthTests(APITestCase):
 
 class WalletAndLedgerTests(TestCase):
     def setUp(self):
+        from wallets.models import AdminWalletAddress
+        AdminWalletAddress.objects.get_or_create(currency='BTC', defaults={'address': '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa'})
+        AdminWalletAddress.objects.get_or_create(currency='ETH', defaults={'address': '0x742d35Cc6634C0532925a3b844Bc454e4438f44e'})
+        AdminWalletAddress.objects.get_or_create(currency='SOL', defaults={'address': 'HN7cABviJserbaXTxHgB5g5D726Q2Vti7H74kFq4m8s3'})
+
         self.user = User.objects.create_user(
             username='walletuser',
             email='walletuser@example.com',
             password='password123',
             full_name='Wallet User'
         )
+
 
     def test_wallet_address_generation(self):
         """Test that wallets automatically generate mock addresses on save based on currency."""
@@ -80,7 +86,10 @@ class WalletAndLedgerTests(TestCase):
 
     def test_transaction_ledger(self):
         """Test transaction creation and tracking."""
-        wallet = Wallet.objects.create(user=self.user, currency='USDT', balance=100.0)
+        wallet, _ = Wallet.objects.get_or_create(user=self.user, currency='USDT')
+        wallet.balance = 100.0
+        wallet.save()
+
         tx = Transaction.objects.create(
             user=self.user,
             wallet=wallet,
@@ -135,7 +144,10 @@ class ProfitCalculationsTests(TestCase):
 
     def test_investment_maturity_payout(self):
         """Test that running distribute_profits matures investments whose end_date has passed, paying out back to wallets."""
-        wallet = Wallet.objects.create(user=self.user, currency='USDT', balance=0.0)
+        wallet, _ = Wallet.objects.get_or_create(user=self.user, currency='USDT')
+        wallet.balance = 0.0
+        wallet.save()
+
         
         investment = Investment.objects.create(
             user=self.user,
@@ -245,7 +257,10 @@ class AdminAuthTests(APITestCase):
             password='password123',
             full_name='Tx Test User'
         )
-        wallet = Wallet.objects.create(user=customer, currency='USDT', balance=100.0)
+        wallet, _ = Wallet.objects.get_or_create(user=customer, currency='USDT')
+        wallet.balance = 100.0
+        wallet.save()
+
         
         # Create a transaction
         tx = Transaction.objects.create(
@@ -451,7 +466,10 @@ class EmailVerificationAndDailyProfitTests(APITestCase):
             password='password123',
             is_email_verified=True
         )
-        wallet = Wallet.objects.create(user=user, currency='USDT', balance=100.0)
+        wallet, _ = Wallet.objects.get_or_create(user=user, currency='USDT')
+        wallet.balance = 100.0
+        wallet.save()
+
         mail.outbox.clear()
 
         # Create a transaction
@@ -491,7 +509,10 @@ class VIPUpgradeAndWithdrawalTests(APITestCase):
             vip_level=self.vip_1
         )
         # Create wallet and add some balance
-        self.wallet, _ = Wallet.objects.get_or_create(user=self.user, currency='USDT', defaults={'balance': 500.0})
+        self.wallet, _ = Wallet.objects.get_or_create(user=self.user, currency='USDT')
+        self.wallet.balance = 500.0
+        self.wallet.save()
+
 
         # Create admin
         self.admin = Admin.objects.create(

@@ -32,6 +32,24 @@ class UserSerializer(serializers.ModelSerializer):
             'balance', 'profit_balance', 'is_frozen', 'is_2fa_enabled', 'created_at', 'updated_at'
         ]
 
+    def create(self, validated_data):
+        ssn = validated_data.pop('ssn', None)
+        password = validated_data.pop('password', None)
+        user = User(**validated_data)
+        if password:
+            user.set_password(password)
+        if ssn:
+            user.ssn = ssn
+        user.save()
+        return user
+
+    def update(self, instance, validated_data):
+        ssn = validated_data.pop('ssn', None)
+        if ssn:
+            instance.ssn = ssn
+        return super().update(instance, validated_data)
+
+
 class AdminUserSerializer(serializers.ModelSerializer):
     vip_level_details = VIPLevelSerializer(source='vip_level', read_only=True)
     active_investment = serializers.ReadOnlyField()
@@ -60,27 +78,10 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         data = super().validate(attrs)
-        if not self.user.is_email_verified:
+        if not self.user.is_email_verified and not self.user.is_staff and not self.user.is_superuser:
             raise serializers.ValidationError({"detail": "Please verify your email address before logging in."})
         return data
 
-
-    def create(self, validated_data):
-        ssn = validated_data.pop('ssn', None)
-        password = validated_data.pop('password', None)
-        user = User(**validated_data)
-        if password:
-            user.set_password(password)
-        if ssn:
-            user.ssn = ssn
-        user.save()
-        return user
-
-    def update(self, instance, validated_data):
-        ssn = validated_data.pop('ssn', None)
-        if ssn:
-            instance.ssn = ssn
-        return super().update(instance, validated_data)
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
