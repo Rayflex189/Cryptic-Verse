@@ -14,13 +14,15 @@ class WithdrawalSerializer(serializers.ModelSerializer):
         currency = data.get('currency')
         amount = data.get('amount')
         
+        lookup_currency = 'USDT' if currency == 'BANK' else currency
+        
         try:
-            wallet = Wallet.objects.get(user=user, currency=currency)
+            wallet = Wallet.objects.get(user=user, currency=lookup_currency)
         except Wallet.DoesNotExist:
-            raise serializers.ValidationError(f"You do not have a {currency} wallet.")
+            raise serializers.ValidationError(f"You do not have a {lookup_currency} wallet.")
 
         if wallet.balance < amount:
-            raise serializers.ValidationError(f"Insufficient funds in your {currency} wallet. Available: {wallet.balance}")
+            raise serializers.ValidationError(f"Insufficient funds in your {lookup_currency} wallet. Available: {wallet.balance}")
 
         return data
 
@@ -28,7 +30,9 @@ class WithdrawalSerializer(serializers.ModelSerializer):
         user = self.context['request'].user
         currency = validated_data.get('currency')
         amount = validated_data.get('amount')
-        wallet = Wallet.objects.get(user=user, currency=currency)
+        
+        lookup_currency = 'USDT' if currency == 'BANK' else currency
+        wallet = Wallet.objects.get(user=user, currency=lookup_currency)
 
         with transaction.atomic():
             wallet.balance -= amount

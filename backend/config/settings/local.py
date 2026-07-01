@@ -24,5 +24,6 @@ else:
     }
 
 
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+import os
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
 

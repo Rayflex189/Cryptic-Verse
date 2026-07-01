@@ -49,6 +49,7 @@ class User(AbstractUser):
     referral_bonus_override = models.DecimalField(max_digits=20, decimal_places=8, null=True, blank=True)
     last_profit_accrual = models.DateTimeField(null=True, blank=True)
     is_frozen = models.BooleanField(default=False)
+    is_automation_enabled = models.BooleanField(default=True)
     last_login_ip = models.GenericIPAddressField(null=True, blank=True)
     device_fingerprint = models.CharField(max_length=255, blank=True)
     profile_picture = models.URLField(max_length=500, blank=True, null=True)

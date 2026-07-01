@@ -22,8 +22,8 @@ from withdrawals.models import Withdrawal
 from withdrawals.serializers import WithdrawalSerializer
 from kyc.models import KYCDocument
 from kyc.serializers import KYCDocumentSerializer
-from investments.models import InvestmentPlan
-from investments.serializers import InvestmentPlanSerializer
+from investments.models import InvestmentPlan, Investment
+from investments.serializers import InvestmentPlanSerializer, AdminInvestmentSerializer
 from notifications.models import Notification
 from transactions.models import Transaction
 from transactions.serializers import TransactionSerializer
@@ -204,6 +204,23 @@ class AdminUserViewSet(viewsets.ModelViewSet):
                 description=f"Admin referral bonus adjustment: {'Incremented' if diff > 0 else 'Decremented'} from {old_referral_val:.2f} to {new_referral_val:.2f}",
                 status='COMPLETED'
             )
+
+    def destroy(self, request, *args, **kwargs):
+        user = self.get_object()
+        user_id = user.id
+        username = user.username
+        
+        # Log action
+        AuditLog.objects.create(
+            admin=request.admin_user,
+            action='DELETE_USER',
+            entity_type='User',
+            entity_id=str(user_id),
+            old_values={'username': username, 'email': user.email}
+        )
+        
+        user.delete()
+        return Response({'status': 'success', 'message': f"User account @{username} has been deleted successfully."})
 
     @action(detail=True, methods=['post'], url_path='freeze')
     def toggle_freeze(self, request, pk=None):
@@ -672,5 +689,212 @@ class AdminTransactionViewSet(viewsets.ModelViewSet):
             new_values=request.data
         )
         return response
+
+class AdminInvestmentViewSet(viewsets.ModelViewSet):
+    authentication_classes = ()
+    serializer_class = AdminInvestmentSerializer
+    permission_classes = [IsAdminUserToken]
+    queryset = Investment.objects.all().order_by('-created_at')
+
+    @action(detail=True, methods=['post'], url_path='pause')
+    def pause_investment(self, request, pk=None):
+        inv = self.get_object()
+        old_val = inv.is_paused
+        inv.is_paused = True
+        inv.status = 'PAUSED'
+        inv.save()
+        
+        AuditLog.objects.create(
+            admin=request.admin_user,
+            user=inv.user,
+            action='PAUSE_INVESTMENT',
+            entity_type='Investment',
+            entity_id=str(inv.id),
+            old_values={'is_paused': old_val, 'status': 'ACTIVE'},
+            new_values={'is_paused': True, 'status': 'PAUSED'}
+        )
+        return Response({'message': 'Investment paused successfully.'})
+
+    @action(detail=True, methods=['post'], url_path='resume')
+    def resume_investment(self, request, pk=None):
+        inv = self.get_object()
+        old_val = inv.is_paused
+        inv.is_paused = False
+        inv.status = 'ACTIVE'
+        inv.next_payout_at = timezone.now()
+        inv.save()
+
+        AuditLog.objects.create(
+            admin=request.admin_user,
+            user=inv.user,
+            action='RESUME_INVESTMENT',
+            entity_type='Investment',
+            entity_id=str(inv.id),
+            old_values={'is_paused': old_val, 'status': 'PAUSED'},
+            new_values={'is_paused': False, 'status': 'ACTIVE'}
+        )
+        return Response({'message': 'Investment resumed successfully.'})
+
+    @action(detail=True, methods=['post'], url_path='cancel')
+    def cancel_investment(self, request, pk=None):
+        inv = self.get_object()
+        old_status = inv.status
+        inv.status = 'CANCELLED'
+        inv.is_paused = True
+        inv.save()
+
+        refund = request.data.get('refund', False)
+        if refund:
+            wallet, _ = Wallet.objects.get_or_create(user=inv.user, currency=inv.currency)
+            wallet.balance += inv.amount
+            wallet.save()
+            
+            Transaction.objects.create(
+                user=inv.user,
+                wallet=wallet,
+                type='DEPOSIT',
+                amount=inv.amount,
+                currency=inv.currency,
+                description=f"Refund principal for cancelled Investment #{inv.id}",
+                reference_id=str(inv.id),
+                status='COMPLETED'
+            )
+
+        AuditLog.objects.create(
+            admin=request.admin_user,
+            user=inv.user,
+            action='CANCEL_INVESTMENT',
+            entity_type='Investment',
+            entity_id=str(inv.id),
+            old_values={'status': old_status},
+            new_values={'status': 'CANCELLED', 'refunded': refund}
+        )
+        return Response({'message': f"Investment cancelled successfully. Refunded: {refund}"})
+
+    @action(detail=True, methods=['post'], url_path='trigger-payout')
+    def trigger_payout(self, request, pk=None):
+        inv = self.get_object()
+        payout_amount = request.data.get('amount', None)
+        if payout_amount is not None:
+            try:
+                payout_amount = Decimal(str(payout_amount))
+            except Exception:
+                return Response({'error': 'Invalid amount.'}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            payout_amount = inv.amount_per_payout
+
+        with transaction.atomic():
+            wallet, _ = Wallet.objects.get_or_create(user=inv.user, currency=inv.currency)
+            wallet.balance += payout_amount
+            wallet.save()
+
+            Transaction.objects.create(
+                user=inv.user,
+                wallet=wallet,
+                type='PROFIT',
+                amount=payout_amount,
+                currency=inv.currency,
+                description=f"Manual on-demand profit credit for investment #{inv.id}",
+                reference_id=str(inv.id),
+                status='COMPLETED'
+            )
+
+            inv.profit_accrued += payout_amount
+            inv.save()
+
+        AuditLog.objects.create(
+            admin=request.admin_user,
+            user=inv.user,
+            action='MANUAL_PROFIT_CREDIT',
+            entity_type='Investment',
+            entity_id=str(inv.id),
+            new_values={'credited_amount': float(payout_amount)}
+        )
+        return Response({'message': f"Manually credited {payout_amount} profit to user."})
+
+    @action(detail=False, methods=['get', 'post'], url_path='automation')
+    def automation_panel(self, request):
+        if request.method == 'POST':
+            # Toggle global switch
+            global_enabled = request.data.get('global_enabled', None)
+            if global_enabled is not None:
+                setting, _ = WebsiteSetting.objects.get_or_create(
+                    key='global_profit_distribution_enabled',
+                    defaults={'category': 'general', 'value': True}
+                )
+                setting.value = bool(global_enabled)
+                setting.save()
+                
+                AuditLog.objects.create(
+                    admin=request.admin_user,
+                    action='TOGGLE_GLOBAL_AUTOMATION',
+                    entity_type='WebsiteSetting',
+                    new_values={'global_profit_distribution_enabled': setting.value}
+                )
+
+            # Toggle user level automation
+            user_id = request.data.get('user_id', None)
+            user_enabled = request.data.get('user_enabled', None)
+            if user_id is not None and user_enabled is not None:
+                user = User.objects.filter(id=user_id).first()
+                if user:
+                    old_val = user.is_automation_enabled
+                    user.is_automation_enabled = bool(user_enabled)
+                    user.save()
+                    
+                    AuditLog.objects.create(
+                        admin=request.admin_user,
+                        user=user,
+                        action='TOGGLE_USER_AUTOMATION',
+                        entity_type='User',
+                        entity_id=str(user.id),
+                        old_values={'is_automation_enabled': old_val},
+                        new_values={'is_automation_enabled': user.is_automation_enabled}
+                    )
+
+            # Toggle investment level automation
+            inv_id = request.data.get('investment_id', None)
+            inv_enabled = request.data.get('investment_enabled', None)
+            if inv_id is not None and inv_enabled is not None:
+                inv = Investment.objects.filter(id=inv_id).first()
+                if inv:
+                    old_val = inv.is_automated
+                    inv.is_automated = bool(inv_enabled)
+                    inv.save()
+                    
+                    AuditLog.objects.create(
+                        admin=request.admin_user,
+                        user=inv.user,
+                        action='TOGGLE_INVESTMENT_AUTOMATION',
+                        entity_type='Investment',
+                        entity_id=str(inv.id),
+                        old_values={'is_automated': old_val},
+                        new_values={'is_automated': inv.is_automated}
+                    )
+
+        global_setting = WebsiteSetting.objects.filter(key='global_profit_distribution_enabled').first()
+        global_val = global_setting.value if global_setting else True
+
+        scheduled = []
+        active_invs = Investment.objects.filter(status='ACTIVE').order_by('next_payout_at')[:50]
+        for a in active_invs:
+            scheduled.append({
+                'id': a.id,
+                'username': a.user.username,
+                'plan_name': a.plan.name,
+                'amount': float(a.amount),
+                'next_payout_at': a.next_payout_at,
+                'amount_per_payout': float(a.amount_per_payout),
+                'payouts_made': a.payouts_made,
+                'total_payouts_expected': a.total_payouts_expected,
+                'is_automated': a.is_automated,
+                'is_paused': a.is_paused,
+                'user_enabled': a.user.is_automation_enabled
+            })
+
+        return Response({
+            'global_enabled': global_val,
+            'scheduled_payouts': scheduled
+        })
 
 

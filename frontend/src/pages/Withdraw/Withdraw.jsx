@@ -15,6 +15,10 @@ const Withdraw = () => {
   const [selectedCurrency, setSelectedCurrency] = useState('USDT');
   const [amount, setAmount] = useState('');
   const [address, setAddress] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [accountName, setAccountName] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [routingNumber, setRoutingNumber] = useState('');
   const [code2fa, setCode2fa] = useState('');
   
   // Multi-step verification state
@@ -54,18 +58,22 @@ const Withdraw = () => {
       return;
     }
 
-    const currentWallet = wallets.find(w => w.currency === selectedCurrency);
+    const currentWallet = wallets.find(w => w.currency === (selectedCurrency === 'BANK' ? 'USDT' : selectedCurrency));
     if (!currentWallet || parseFloat(currentWallet.balance) < parseFloat(amount)) {
-      setErrorMsg(`Insufficient funds. Your available balance is ${currentWallet?.balance || 0} ${selectedCurrency}`);
+      setErrorMsg(`Insufficient funds. Your available balance is ${currentWallet?.balance || 0} ${selectedCurrency === 'BANK' ? 'USDT' : selectedCurrency}`);
       return;
     }
 
     setSubmitting(true);
     try {
+      const finalAddress = selectedCurrency === 'BANK'
+        ? `Bank: ${bankName} | Acc Name: ${accountName} | Acc Num: ${accountNumber} | Routing: ${routingNumber}`
+        : address;
+
       const res = await api.post('withdrawals/', {
         amount,
         currency: selectedCurrency,
-        address,
+        address: finalAddress,
         code_2fa: code2fa // passed if enabled
       });
       setCreatedWithdrawal(res.data);
@@ -106,7 +114,7 @@ const Withdraw = () => {
     }
   };
 
-  const selectedWallet = wallets.find(w => w.currency === selectedCurrency);
+  const selectedWallet = wallets.find(w => w.currency === (selectedCurrency === 'BANK' ? 'USDT' : selectedCurrency));
 
   if (loading) {
     return (
@@ -155,9 +163,10 @@ const Withdraw = () => {
                     <option value="ETH">Ethereum (ETH)</option>
                     <option value="BNB">Binance Coin (BNB)</option>
                     <option value="SOL">Solana (SOL)</option>
+                    <option value="BANK">Bank Transfer (USD)</option>
                   </select>
                   <span className="text-[10px] text-gray-500 mt-1 block">
-                    Available: {parseFloat(selectedWallet?.balance || 0).toFixed(6)} {selectedCurrency}
+                    Available: {parseFloat(selectedWallet?.balance || 0).toFixed(6)} {selectedCurrency === 'BANK' ? 'USDT' : selectedCurrency}
                   </span>
                 </div>
 
@@ -178,20 +187,72 @@ const Withdraw = () => {
                 </div>
               </div>
 
-              <div>
-                <label htmlFor="address" className="text-xs font-semibold text-gray-400 block mb-2">
-                  Destination Blockchain Address ({selectedCurrency})
-                </label>
-                <input
-                  id="address"
-                  type="text"
-                  required
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  className="w-full rounded p-3 text-xs glass-input font-mono"
-                  placeholder="Enter external destination address"
-                />
-              </div>
+              {selectedCurrency === 'BANK' ? (
+                <div className="space-y-4 border border-slate-200 dark:border-gray-800 rounded-lg p-4 bg-slate-100/10">
+                  <h3 className="text-xs font-bold text-slate-900 dark:text-white mb-2">Bank Transfer Payout Details</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-semibold text-gray-400 block mb-1">Bank Name</label>
+                      <input
+                        type="text"
+                        required
+                        value={bankName}
+                        onChange={(e) => setBankName(e.target.value)}
+                        className="w-full rounded p-3 text-xs glass-input"
+                        placeholder="Chase Bank, Wells Fargo, etc."
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-semibold text-gray-400 block mb-1">Account Holder Name</label>
+                      <input
+                        type="text"
+                        required
+                        value={accountName}
+                        onChange={(e) => setAccountName(e.target.value)}
+                        className="w-full rounded p-3 text-xs glass-input"
+                        placeholder="John Doe"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-semibold text-gray-400 block mb-1">Account Number / IBAN</label>
+                      <input
+                        type="text"
+                        required
+                        value={accountNumber}
+                        onChange={(e) => setAccountNumber(e.target.value)}
+                        className="w-full rounded p-3 text-xs glass-input font-mono"
+                        placeholder="1234567890"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-semibold text-gray-400 block mb-1">Routing Number / Sort Code</label>
+                      <input
+                        type="text"
+                        required
+                        value={routingNumber}
+                        onChange={(e) => setRoutingNumber(e.target.value)}
+                        className="w-full rounded p-3 text-xs glass-input font-mono"
+                        placeholder="987654321"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label htmlFor="address" className="text-xs font-semibold text-gray-400 block mb-2">
+                    Destination Blockchain Address ({selectedCurrency})
+                  </label>
+                  <input
+                    id="address"
+                    type="text"
+                    required
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    className="w-full rounded p-3 text-xs glass-input font-mono"
+                    placeholder="Enter external destination address"
+                  />
+                </div>
+              )}
 
               {user?.is_2fa_enabled && (
                 <div>

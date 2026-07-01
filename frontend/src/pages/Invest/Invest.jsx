@@ -1,15 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import api from '../../api/api';
-import { ArrowLeft, Play, RefreshCw, Layers, Sparkles, HelpCircle } from 'lucide-react';
+import { ArrowLeft, Play, RefreshCw, Layers, Sparkles, HelpCircle, Shield, TrendingUp, Calendar, Clock, DollarSign, Activity } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 const Invest = () => {
   const { user, fetchUserMe } = useAuth();
   const [plans, setPlans] = useState([]);
   const [investments, setInvestments] = useState([]);
   const [wallets, setWallets] = useState([]);
+  const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('plans'); // 'plans', 'portfolios', 'analytics'
+  const [filterRange, setFilterRange] = useState('ALL'); // '7D', '30D', 'ALL'
+  const [now, setNow] = useState(new Date().getTime());
 
   // Modal investment form states
   const [modalOpen, setModalOpen] = useState(false);
@@ -23,19 +28,28 @@ const Invest = () => {
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(new Date().getTime());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     fetchData();
   }, []);
 
   const fetchData = async () => {
     try {
-      const [planRes, invRes, walletRes] = await Promise.all([
+      const [planRes, invRes, walletRes, txRes] = await Promise.all([
         api.get('investment-plans/'),
         api.get('investments/'),
-        api.get('wallets/')
+        api.get('wallets/'),
+        api.get('transactions/')
       ]);
       setPlans(planRes.data);
       setInvestments(invRes.data);
       setWallets(walletRes.data);
+      setTransactions(txRes.data);
       setLoading(false);
     } catch (err) {
       console.error(err);
@@ -129,8 +143,101 @@ const Invest = () => {
     return Math.round((progress / total) * 100);
   };
 
-  const activeInvestments = investments.filter((i) => i.status === 'ACTIVE');
-  const pastInvestments = investments.filter((i) => i.status !== 'ACTIVE');
+  const activeInvestments = investments.filter((i) => i.status === 'ACTIVE' || i.status === 'PAUSED');
+  const pastInvestments = investments.filter((i) => i.status === 'COMPLETED' || i.status === 'CANCELLED');
+
+  // Analytics calculations
+  const totalProfitEarned = transactions
+    .filter(t => t.type === 'PROFIT')
+    .reduce((acc, t) => acc + parseFloat(t.amount), 0);
+
+  const totalExpectedProfit = activeInvestments
+    .reduce((acc, i) => {
+      const expected = i.expected_profit_type === 'PERCENT'
+        ? parseFloat(i.amount) * (parseFloat(i.expected_profit) / 100)
+        : parseFloat(i.expected_profit);
+      return acc + expected;
+    }, 0);
+
+  const totalCreditedFromActive = activeInvestments
+    .reduce((acc, i) => acc + parseFloat(i.profit_accrued), 0);
+
+  const remainingExpectedProfit = Math.max(0, totalExpectedProfit - totalCreditedFromActive);
+  const performancePercentage = totalExpectedProfit > 0
+    ? Math.round((totalCreditedFromActive / totalExpectedProfit) * 100)
+    : 0;
+
+  // Chart data filter
+  const getChartData = () => {
+    const profitTx = transactions
+      .filter(tx => tx.type === 'PROFIT')
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+    const nowTime = new Date().getTime();
+    let cutoff = 0;
+    if (filterRange === '7D') {
+      cutoff = nowTime - (7 * 24 * 60 * 60 * 1000);
+    } else if (filterRange === '30D') {
+      cutoff = nowTime - (30 * 24 * 60 * 60 * 1000);
+    }
+
+    const filtered = cutoff > 0 
+      ? profitTx.filter(tx => new Date(tx.created_at).getTime() >= cutoff)
+      : profitTx;
+
+    let cumulative = 0;
+    return filtered.map(tx => {
+      cumulative += parseFloat(tx.amount);
+      return {
+        date: new Date(tx.created_at).toLocaleDateString(),
+        amount: cumulative,
+        rawAmount: parseFloat(tx.amount)
+      };
+    });
+  };
+
+  const getNextPayoutCountdown = () => {
+    const activeInvs = investments.filter(i => i.status === 'ACTIVE' && i.next_payout_at);
+    if (activeInvs.length === 0) return 'No active payouts';
+    
+    const dates = activeInvs.map(i => new Date(i.next_payout_at).getTime());
+    const nextDate = Math.min(...dates);
+    const diff = nextDate - now;
+    if (diff <= 0) return 'Processing...';
+    
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    
+    return `${hours}h ${minutes}m ${seconds}s`;
+  };
+
+  const getRemainingTime = (endDateStr) => {
+    const end = new Date(endDateStr).getTime();
+    const diff = end - now;
+    if (diff <= 0) return 'Matured';
+    
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    
+    return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+  };
+
+  const getElapsedDays = (startDateStr) => {
+    const start = new Date(startDateStr).getTime();
+    const diff = now - start;
+    if (diff <= 0) return 0;
+    return Math.floor(diff / (1000 * 60 * 60 * 24));
+  };
+
+  const getRemainingDays = (endDateStr) => {
+    const end = new Date(endDateStr).getTime();
+    const diff = end - now;
+    if (diff <= 0) return 0;
+    return Math.floor(diff / (1000 * 60 * 60 * 24));
+  };
 
   if (loading) {
     return (
@@ -146,168 +253,350 @@ const Invest = () => {
         <ArrowLeft size={14} /> Back to Dashboard
       </Link>
 
-      <h1 className="text-2xl font-black text-slate-900 dark:text-white mb-8">Investment Portal</h1>
+      <h1 className="text-2xl font-black text-slate-900 dark:text-white mb-6">Investment Portal</h1>
 
-      {/* Plans List */}
-      <div className="mb-12">
-        <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-6 uppercase tracking-wider flex items-center gap-2">
-          <Sparkles size={18} className="text-cyanAccent" /> Active Investment Plans
-        </h2>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {plans.map((plan) => (
-            <div key={plan.id} className="glass-panel p-6 sm:p-8 rounded-xl flex flex-col justify-between hover:border-cyanAccent/50 transition duration-300 relative overflow-hidden group">
-              <div className="absolute top-0 right-0 h-24 w-24 bg-cyanAccent/5 rounded-bl-full group-hover:bg-cyanAccent/10 transition"></div>
-              
-              <div>
-                <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-cyanAccent/10 text-cyanAccent border border-cyanAccent/20">
-                  {plan.compounding ? 'Compound Return' : 'Fixed Return'}
-                </span>
-                <h3 className="text-xl font-black text-slate-900 dark:text-white mt-4">{plan.name}</h3>
-                
-                <div className="mt-6 space-y-3 text-xs text-slate-500 dark:text-gray-400">
-                  <div className="flex justify-between border-b border-slate-200 dark:border-gray-800 pb-2">
-                    <span>Daily Profit:</span>
-                    <span className="font-bold text-emeraldAccent">+{plan.daily_profit_percent}%</span>
-                  </div>
-                  <div className="flex justify-between border-b border-slate-200 dark:border-gray-800 pb-2">
-                    <span>Min Investment:</span>
-                    <span className="font-semibold text-slate-900 dark:text-white">${parseFloat(plan.min_deposit).toLocaleString()} USDT</span>
-                  </div>
-                  <div className="flex justify-between border-b border-slate-200 dark:border-gray-800 pb-2">
-                    <span>Max Investment:</span>
-                    <span className="font-semibold text-slate-900 dark:text-white">${parseFloat(plan.max_deposit).toLocaleString()} USDT</span>
-                  </div>
-                  <div className="flex justify-between pb-2">
-                    <span>Duration:</span>
-                    <span className="font-semibold text-slate-900 dark:text-white">{plan.duration_days} Days</span>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={() => openInvestModal(plan)}
-                className="w-full mt-8 rounded bg-gradient-to-r from-cyanAccent to-emeraldAccent py-3 text-xs font-bold text-black hover:opacity-90 transition flex items-center justify-center gap-1"
-              >
-                <Play size={14} className="fill-current" /> Invest In Plan
-              </button>
-            </div>
-          ))}
-        </div>
+      {/* Tabs */}
+      <div className="flex flex-wrap gap-2 border-b border-slate-200 dark:border-gray-800 pb-4 mb-8">
+        <button
+          onClick={() => setActiveTab('plans')}
+          className={`px-4 py-2 text-xs font-bold rounded-lg transition flex items-center gap-1.5 ${
+            activeTab === 'plans'
+              ? 'bg-cyanAccent text-black font-black'
+              : 'text-gray-400 hover:text-white hover:bg-slate-800/30'
+          }`}
+        >
+          <Sparkles size={14} /> Investment Plans
+        </button>
+        <button
+          onClick={() => setActiveTab('portfolios')}
+          className={`px-4 py-2 text-xs font-bold rounded-lg transition flex items-center gap-1.5 ${
+            activeTab === 'portfolios'
+              ? 'bg-cyanAccent text-black font-black'
+              : 'text-gray-400 hover:text-white hover:bg-slate-800/30'
+          }`}
+        >
+          <Layers size={14} /> Active Portfolios ({activeInvestments.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('analytics')}
+          className={`px-4 py-2 text-xs font-bold rounded-lg transition flex items-center gap-1.5 ${
+            activeTab === 'analytics'
+              ? 'bg-cyanAccent text-black font-black'
+              : 'text-gray-400 hover:text-white hover:bg-slate-800/30'
+          }`}
+        >
+          <TrendingUp size={14} /> Profit Analytics
+        </button>
       </div>
 
-      {/* Active Investments */}
-      <div className="mb-12">
-        <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-6 uppercase tracking-wider flex items-center gap-2">
-          <Layers size={18} className="text-emeraldAccent" /> Your Active Investments
-        </h2>
-
-        {activeInvestments.length === 0 ? (
-          <div className="glass-panel p-8 text-center text-xs text-gray-500 rounded-xl">
-            You do not have any active investments currently. Invest in a plan above to start earning yields.
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {activeInvestments.map((inv) => {
-              const progress = calculateProgress(inv.start_date, inv.end_date);
-              return (
-                <div key={inv.id} className="glass-panel p-6 rounded-xl space-y-4">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">{inv.plan_details?.name}</h4>
-                      <span className="text-[10px] text-gray-500 font-mono">ID: INV-{inv.id}</span>
-                    </div>
-                    <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-emeraldAccent/15 text-emeraldAccent border border-emeraldAccent/20">
-                      Accruing
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 text-xs">
-                    <div>
-                      <span className="text-gray-400 block mb-0.5">Principal Amount</span>
-                      <span className="font-bold text-slate-900 dark:text-white">${parseFloat(inv.amount).toFixed(2)} {inv.currency}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-400 block mb-0.5">Accrued Profit</span>
-                      <span className="font-bold text-emeraldAccent">+${parseFloat(inv.profit_accrued).toFixed(6)} {inv.currency}</span>
-                    </div>
-                  </div>
-
-                  {/* Progress bar */}
+      {activeTab === 'plans' && (
+        <>
+          {/* Plans List */}
+          <div className="mb-12">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-6 uppercase tracking-wider flex items-center gap-2">
+              <Sparkles size={18} className="text-cyanAccent" /> Active Investment Plans
+            </h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {plans.map((plan) => (
+                <div key={plan.id} className="glass-panel p-6 sm:p-8 rounded-xl flex flex-col justify-between hover:border-cyanAccent/50 transition duration-300 relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 h-24 w-24 bg-cyanAccent/5 rounded-bl-full group-hover:bg-cyanAccent/10 transition"></div>
+                  
                   <div>
-                    <div className="flex justify-between text-[10px] text-gray-500 mb-1">
-                      <span>Maturity progress: {progress}%</span>
-                      <span>Matures: {new Date(inv.end_date).toLocaleDateString()}</span>
-                    </div>
-                    <div className="w-full bg-slate-200 dark:bg-gray-800 h-1.5 rounded-full overflow-hidden">
-                      <div className="bg-cyanAccent h-1.5 rounded-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
+                    <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-cyanAccent/10 text-cyanAccent border border-cyanAccent/20">
+                      {plan.compounding ? 'Compound Return' : 'Fixed Return'}
+                    </span>
+                    <h3 className="text-xl font-black text-slate-900 dark:text-white mt-4">{plan.name}</h3>
+                    
+                    <div className="mt-6 space-y-3 text-xs text-slate-500 dark:text-gray-400">
+                      <div className="flex justify-between border-b border-slate-200 dark:border-gray-800 pb-2">
+                        <span>Daily Profit:</span>
+                        <span className="font-bold text-emeraldAccent">+{plan.daily_profit_percent}%</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-200 dark:border-gray-800 pb-2">
+                        <span>Min Investment:</span>
+                        <span className="font-semibold text-slate-900 dark:text-white">${parseFloat(plan.min_deposit).toLocaleString()} USDT</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-200 dark:border-gray-800 pb-2">
+                        <span>Max Investment:</span>
+                        <span className="font-semibold text-slate-900 dark:text-white">${parseFloat(plan.max_deposit).toLocaleString()} USDT</span>
+                      </div>
+                      <div className="flex justify-between pb-2">
+                        <span>Duration:</span>
+                        <span className="font-semibold text-slate-900 dark:text-white">{plan.duration_days} Days</span>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Compounding & Auto-reinvest settings */}
-                  <div className="flex justify-between items-center text-xs pt-2 border-t border-slate-200 dark:border-gray-800">
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={inv.auto_reinvest}
-                        onChange={() => handleToggleReinvest(inv.id)}
-                        className="rounded border-slate-300 dark:border-gray-700 bg-slate-100 dark:bg-gray-900 text-cyanAccent focus:ring-0 focus:ring-offset-0 h-4 w-4"
-                      />
-                      <span className="text-slate-500 dark:text-gray-400 text-[11px]">Auto Reinvest on Maturity</span>
-                    </label>
-
-                    <button
-                      onClick={() => handleWithdrawProfit(inv.id)}
-                      disabled={parseFloat(inv.profit_accrued) <= 0}
-                      className="px-3 py-1 bg-emeraldAccent text-black font-bold text-[10px] rounded hover:opacity-90 transition disabled:opacity-50"
-                    >
-                      Withdraw Profit
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => openInvestModal(plan)}
+                    className="w-full mt-8 rounded bg-gradient-to-r from-cyanAccent to-emeraldAccent py-3 text-xs font-bold text-black hover:opacity-90 transition flex items-center justify-center gap-1"
+                  >
+                    <Play size={14} className="fill-current" /> Invest In Plan
+                  </button>
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
-        )}
-      </div>
 
-      {/* Completed Investments history */}
-      {pastInvestments.length > 0 && (
-        <div className="glass-panel p-6 rounded-xl">
-          <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-6">Completed Investments</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-gray-850 text-slate-550 dark:text-gray-400 font-semibold">
-                  <th className="pb-3">ID</th>
-                  <th className="pb-3">Plan</th>
-                  <th className="pb-3">Amount</th>
-                  <th className="pb-3">Accrued Profit</th>
-                  <th className="pb-3">Start Date</th>
-                  <th className="pb-3">End Date</th>
-                  <th className="pb-3">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-150 dark:divide-gray-800/45 text-slate-700 dark:text-gray-300">
-                {pastInvestments.map((inv) => (
-                  <tr key={inv.id}>
-                    <td className="py-3 text-gray-500 font-mono">INV-{inv.id}</td>
-                    <td className="py-3 font-semibold text-slate-900 dark:text-white">{inv.plan_details?.name}</td>
-                    <td className="py-3">${parseFloat(inv.amount).toFixed(2)} {inv.currency}</td>
-                    <td className="py-3 text-emeraldAccent">+${parseFloat(inv.profit_accrued).toFixed(2)}</td>
-                    <td className="py-3 text-gray-550">{new Date(inv.start_date).toLocaleDateString()}</td>
-                    <td className="py-3 text-gray-550">{new Date(inv.end_date).toLocaleDateString()}</td>
-                    <td className="py-3">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        inv.status === 'COMPLETED' ? 'bg-slate-200 dark:bg-gray-800 text-slate-500 dark:text-gray-400' : 'bg-red-400/15 text-red-400'
-                      }`}>
-                        {inv.status}
+          {/* Completed Investments history */}
+          {pastInvestments.length > 0 && (
+            <div className="glass-panel p-6 rounded-xl">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-6">Completed Investments</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-gray-850 text-slate-550 dark:text-gray-400 font-semibold">
+                      <th className="pb-3">ID</th>
+                      <th className="pb-3">Plan</th>
+                      <th className="pb-3">Amount</th>
+                      <th className="pb-3">Accrued Profit</th>
+                      <th className="pb-3">Start Date</th>
+                      <th className="pb-3">End Date</th>
+                      <th className="pb-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-150 dark:divide-gray-800/45 text-slate-700 dark:text-gray-300">
+                    {pastInvestments.map((inv) => (
+                      <tr key={inv.id}>
+                        <td className="py-3 text-gray-500 font-mono">INV-{inv.id}</td>
+                        <td className="py-3 font-semibold text-slate-900 dark:text-white">{inv.plan_details?.name}</td>
+                        <td className="py-3">${parseFloat(inv.amount).toFixed(2)} {inv.currency}</td>
+                        <td className="py-3 text-emeraldAccent">+${parseFloat(inv.profit_accrued).toFixed(2)}</td>
+                        <td className="py-3 text-gray-550">{new Date(inv.start_date).toLocaleDateString()}</td>
+                        <td className="py-3 text-gray-550">{new Date(inv.end_date).toLocaleDateString()}</td>
+                        <td className="py-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            inv.status === 'COMPLETED' ? 'bg-slate-200 dark:bg-gray-800 text-slate-500 dark:text-gray-400' : 'bg-red-400/15 text-red-400'
+                          }`}>
+                            {inv.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {activeTab === 'portfolios' && (
+        <div className="space-y-6">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-6 uppercase tracking-wider flex items-center gap-2">
+            <Layers size={18} className="text-emeraldAccent" /> Your Active Investments
+          </h2>
+
+          {activeInvestments.length === 0 ? (
+            <div className="glass-panel p-8 text-center text-xs text-gray-500 rounded-xl">
+              You do not have any active investments currently.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {activeInvestments.map((inv) => {
+                const start = new Date(inv.start_date).getTime();
+                const end = new Date(inv.end_date).getTime();
+                const total = end - start;
+                const elapsed = now - start;
+                const progress = total > 0 ? Math.min(100, Math.max(0, Math.round((elapsed / total) * 100))) : 0;
+
+                const expectedProfit = inv.expected_profit_type === 'PERCENT'
+                  ? parseFloat(inv.amount) * (parseFloat(inv.expected_profit) / 100)
+                  : parseFloat(inv.expected_profit);
+
+                return (
+                  <div key={inv.id} className="glass-panel p-6 rounded-xl space-y-4 relative border border-slate-250 dark:border-gray-800">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                          {inv.plan_details?.name}
+                          {inv.status === 'PAUSED' && (
+                            <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                              Paused
+                            </span>
+                          )}
+                        </h4>
+                        <span className="text-[10px] text-gray-500 font-mono">ID: INV-{inv.id}</span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-emeraldAccent/15 text-emeraldAccent border border-emeraldAccent/20">
+                        {inv.distribution_frequency} Yield
                       </span>
-                    </td>
-                  </tr>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+                      <div>
+                        <span className="text-gray-400 block mb-0.5">Principal</span>
+                        <span className="font-bold text-slate-900 dark:text-white">${parseFloat(inv.amount).toFixed(2)}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 block mb-0.5">Accrued Profit</span>
+                        <span className="font-bold text-emeraldAccent">+${parseFloat(inv.profit_accrued).toFixed(6)}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 block mb-0.5">Expected Payout</span>
+                        <span className="font-bold text-cyanAccent">${expectedProfit.toFixed(2)}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 block mb-0.5">Next Payout</span>
+                        <span className="font-semibold text-gray-300 font-mono text-[10px]">
+                          {inv.status === 'PAUSED' ? 'Paused' : (inv.next_payout_at ? getRemainingTime(inv.next_payout_at) : 'Completed')}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Progress tracking */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] text-gray-500">
+                        <span>Completion Progress: {progress}%</span>
+                        <span className="flex items-center gap-0.5"><Clock size={10} /> Countdown: {getRemainingTime(inv.end_date)}</span>
+                      </div>
+                      <div className="w-full bg-slate-200 dark:bg-gray-800 h-2 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full transition-all duration-500 ${inv.status === 'PAUSED' ? 'bg-amber-500' : 'bg-cyanAccent'}`} style={{ width: `${progress}%` }}></div>
+                      </div>
+                      <div className="flex justify-between text-[9px] text-gray-400">
+                        <span>Days Elapsed: {getElapsedDays(inv.start_date)}d</span>
+                        <span>Days Remaining: {getRemainingDays(inv.end_date)}d</span>
+                      </div>
+                    </div>
+
+                    {/* Footer toggles / actions */}
+                    <div className="flex flex-wrap justify-between items-center text-xs pt-3 border-t border-slate-200 dark:border-gray-800 gap-4">
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={inv.auto_reinvest}
+                          onChange={() => handleToggleReinvest(inv.id)}
+                          className="rounded border-slate-300 dark:border-gray-700 bg-slate-100 dark:bg-gray-900 text-cyanAccent focus:ring-0 focus:ring-offset-0 h-4 w-4"
+                        />
+                        <span className="text-slate-500 dark:text-gray-400 text-[11px]">Auto Reinvest on Maturity</span>
+                      </label>
+
+                      <button
+                        onClick={() => handleWithdrawProfit(inv.id)}
+                        disabled={parseFloat(inv.profit_accrued) <= 0}
+                        className="px-3 py-1 bg-emeraldAccent text-black font-bold text-[10px] rounded hover:opacity-90 transition disabled:opacity-50"
+                      >
+                        Withdraw Profit
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'analytics' && (
+        <div className="space-y-8">
+          {/* Summary stats widgets */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="glass-panel p-4 rounded-xl relative overflow-hidden">
+              <DollarSign size={20} className="absolute right-4 top-4 text-cyanAccent opacity-20" />
+              <span className="text-[10px] text-gray-400 font-bold block mb-1">Total Account Balance</span>
+              <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
+                ${parseFloat(user?.balance || 0).toLocaleString()} <span className="text-[10px] text-gray-400">USDT</span>
+              </span>
+            </div>
+
+            <div className="glass-panel p-4 rounded-xl relative overflow-hidden">
+              <TrendingUp size={20} className="absolute right-4 top-4 text-emeraldAccent opacity-20" />
+              <span className="text-[10px] text-gray-400 font-bold block mb-1">Total Profits Earned</span>
+              <span className="text-lg sm:text-xl font-black text-emeraldAccent">
+                +${totalProfitEarned.toFixed(6)}
+              </span>
+            </div>
+
+            <div className="glass-panel p-4 rounded-xl relative overflow-hidden">
+              <Clock size={20} className="absolute right-4 top-4 text-cyanAccent opacity-20" />
+              <span className="text-[10px] text-gray-400 font-bold block mb-1">Pending expected Profit</span>
+              <span className="text-lg sm:text-xl font-black text-cyanAccent">
+                ${remainingExpectedProfit.toFixed(6)}
+              </span>
+            </div>
+
+            <div className="glass-panel p-4 rounded-xl relative overflow-hidden">
+              <Activity size={20} className="absolute right-4 top-4 text-emeraldAccent opacity-20" />
+              <span className="text-[10px] text-gray-400 font-bold block mb-1">Portfolio Performance %</span>
+              <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
+                {performancePercentage}%
+              </span>
+            </div>
+          </div>
+
+          {/* Payout Chart */}
+          <div className="glass-panel p-6 rounded-xl space-y-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Cumulative Profit Growth</h3>
+                <span className="text-[10px] text-gray-500">Real-time performance index</span>
+              </div>
+              <div className="flex gap-2">
+                {['7D', '30D', 'ALL'].map((range) => (
+                  <button
+                    key={range}
+                    onClick={() => setFilterRange(range)}
+                    className={`px-2 py-1 text-[9px] font-bold rounded transition ${
+                      filterRange === range
+                        ? 'bg-cyanAccent text-black'
+                        : 'text-gray-400 hover:text-white bg-slate-800/30'
+                    }`}
+                  >
+                    {range}
+                  </button>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            </div>
+
+            <div className="h-[250px] w-full bg-slate-950/20 rounded-lg p-2 border border-slate-900/30">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={getChartData()} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="profitGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.2}/>
+                      <stop offset="95%" stopColor="#06b6d4" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.3} />
+                  <XAxis dataKey="date" stroke="#64748b" fontSize={9} />
+                  <YAxis stroke="#64748b" fontSize={9} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '8px', fontSize: '11px', textAlign: 'left' }}
+                    labelStyle={{ color: '#94a3b8', fontWeight: 'bold' }}
+                    itemStyle={{ color: '#22c55e' }}
+                  />
+                  <Area type="monotone" dataKey="amount" stroke="#06b6d4" strokeWidth={2} fillOpacity={1} fill="url(#profitGrad)" name="Total Profit ($)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Timeline list of profit payouts */}
+          <div className="glass-panel p-6 rounded-xl">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4">Payout History Timeline</h3>
+            
+            {transactions.filter(t => t.type === 'PROFIT').length === 0 ? (
+              <div className="text-center text-xs text-gray-500 py-6">
+                No profit credits recorded yet.
+              </div>
+            ) : (
+              <div className="overflow-y-auto max-h-[300px] divide-y divide-slate-200 dark:divide-gray-800/50 pr-2">
+                {transactions
+                  .filter(t => t.type === 'PROFIT')
+                  .map((tx) => (
+                    <div key={tx.id} className="py-3 flex justify-between items-center text-xs hover:bg-slate-100/5 px-2 rounded transition">
+                      <div className="space-y-1">
+                        <span className="font-semibold text-slate-900 dark:text-white block">{tx.description}</span>
+                        <span className="text-[10px] text-gray-500 block">{new Date(tx.created_at).toLocaleString()}</span>
+                      </div>
+                      <span className="font-bold text-emeraldAccent">
+                        +${parseFloat(tx.amount).toFixed(6)} {tx.currency}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
         </div>
       )}

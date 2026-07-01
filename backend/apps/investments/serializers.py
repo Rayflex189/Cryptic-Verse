@@ -52,3 +52,12 @@ class InvestmentSerializer(serializers.ModelSerializer):
                 **validated_data
             )
         return investment
+
+class AdminInvestmentSerializer(serializers.ModelSerializer):
+    plan_details = InvestmentPlanSerializer(source='plan', read_only=True)
+    username = serializers.CharField(source='user.username', read_only=True)
+
+    class Meta:
+        model = Investment
+        fields = '__all__'
+        read_only_fields = ['id', 'created_at', 'updated_at']

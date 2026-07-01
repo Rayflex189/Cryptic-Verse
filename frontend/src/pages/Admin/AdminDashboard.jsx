@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useTheme } from '../../hooks/useTheme';
 import api from '../../api/api';
-import { Shield, Users, ArrowUpCircle, ArrowDownCircle, FileCheck, Megaphone, History, UserMinus, UserCheck, Plus, Minus, Eye, Settings, LogOut, Check, X, ShieldAlert, Award, Sun, Moon, Receipt } from 'lucide-react';
+import { Shield, Users, ArrowUpCircle, ArrowDownCircle, FileCheck, Megaphone, History, UserMinus, UserCheck, Plus, Minus, Eye, Settings, LogOut, Check, X, ShieldAlert, Award, Sun, Moon, Receipt, Trash2 } from 'lucide-react';
 
 const AdminDashboard = () => {
   const { adminUser, adminLogout } = useAuth();
@@ -24,6 +24,26 @@ const AdminDashboard = () => {
   const [vipUpgrades, setVipUpgrades] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [plans, setPlans] = useState([]);
+  const [adminInvestments, setAdminInvestments] = useState([]);
+  const [scheduledPayouts, setScheduledPayouts] = useState([]);
+  const [globalAutomationEnabled, setGlobalAutomationEnabled] = useState(true);
+
+  // Investment form states
+  const [editingInvestment, setEditingInvestment] = useState(null);
+  const [invUser, setInvUser] = useState('');
+  const [invPlan, setInvPlan] = useState('');
+  const [invAmount, setInvAmount] = useState('');
+  const [invCurrency, setInvCurrency] = useState('USDT');
+  const [invStartDate, setInvStartDate] = useState('');
+  const [invEndDate, setInvEndDate] = useState('');
+  const [invExpectedProfit, setInvExpectedProfit] = useState('');
+  const [invExpectedProfitType, setInvExpectedProfitType] = useState('PERCENT');
+  const [invDistributionFrequency, setInvDistributionFrequency] = useState('DAILY');
+  const [invIsAutomated, setInvIsAutomated] = useState(true);
+  const [invIsPaused, setInvIsPaused] = useState(false);
+  const [invAutoReinvest, setInvAutoReinvest] = useState(false);
+  const [invStatus, setInvStatus] = useState('ACTIVE');
+  const [submittingInvestment, setSubmittingInvestment] = useState(false);
 
   // Plans Form States
   const [editingPlan, setEditingPlan] = useState(null);
@@ -87,6 +107,8 @@ const AdminDashboard = () => {
     if (activeTab === 'transactions') fetchTransactions();
     if (activeTab === 'plans') fetchPlans();
     if (activeTab === 'system_wallets') fetchAdminWalletAddresses();
+    if (activeTab === 'investments') fetchAdminInvestments();
+    if (activeTab === 'automation') fetchAutomationPanel();
   }, [activeTab]);
 
   const fetchStats = async () => {
@@ -163,12 +185,186 @@ const AdminDashboard = () => {
     }
   };
 
+  const fetchAdminInvestments = async () => {
+    try {
+      const res = await api.get('admin/investments/');
+      setAdminInvestments(res.data);
+    } catch (err) {
+      setError('Failed to fetch user investments.');
+    }
+  };
+
+  const fetchAutomationPanel = async () => {
+    try {
+      const res = await api.get('admin/investments/automation/');
+      setGlobalAutomationEnabled(res.data.global_enabled);
+      setScheduledPayouts(res.data.scheduled_payouts);
+    } catch (err) {
+      setError('Failed to fetch automation settings.');
+    }
+  };
+
   const fetchPlans = async () => {
     try {
       const res = await api.get('admin/plans/');
       setPlans(res.data);
     } catch (err) {
       setError('Failed to fetch investment plans.');
+    }
+  };
+
+  const handleCreateOrUpdateInvestment = async (e) => {
+    e.preventDefault();
+    if (!invUser || !invPlan || !invAmount) {
+      setError('Please select a user, plan, and input amount.');
+      return;
+    }
+
+    setSubmittingInvestment(true);
+    setError('');
+    setSuccess('');
+
+    const payload = {
+      user: invUser,
+      plan: invPlan,
+      amount: invAmount,
+      currency: invCurrency,
+      expected_profit: invExpectedProfit || 0,
+      expected_profit_type: invExpectedProfitType,
+      distribution_frequency: invDistributionFrequency,
+      is_automated: invIsAutomated,
+      is_paused: invIsPaused,
+      auto_reinvest: invAutoReinvest,
+      status: invStatus
+    };
+
+    if (invStartDate) payload.start_date = invStartDate;
+    if (invEndDate) payload.end_date = invEndDate;
+
+    try {
+      if (editingInvestment) {
+        await api.put(`admin/investments/${editingInvestment.id}/`, payload);
+        setSuccess('Investment updated successfully.');
+      } else {
+        await api.post('admin/investments/', payload);
+        setSuccess('Investment created successfully.');
+      }
+      setEditingInvestment(null);
+      resetInvestmentForm();
+      fetchAdminInvestments();
+    } catch (err) {
+      setError(err.response?.data?.error || err.response?.data?.non_field_errors?.[0] || 'Failed to save investment.');
+    } finally {
+      setSubmittingInvestment(false);
+    }
+  };
+
+  const resetInvestmentForm = () => {
+    setInvUser('');
+    setInvPlan('');
+    setInvAmount('');
+    setInvCurrency('USDT');
+    setInvStartDate('');
+    setInvEndDate('');
+    setInvExpectedProfit('');
+    setInvExpectedProfitType('PERCENT');
+    setInvDistributionFrequency('DAILY');
+    setInvIsAutomated(true);
+    setInvIsPaused(false);
+    setInvAutoReinvest(false);
+    setInvStatus('ACTIVE');
+  };
+
+  const startEditInvestment = (inv) => {
+    setEditingInvestment(inv);
+    setInvUser(inv.user);
+    setInvPlan(inv.plan);
+    setInvAmount(inv.amount);
+    setInvCurrency(inv.currency);
+    setInvStartDate(inv.start_date ? inv.start_date.substring(0, 16) : '');
+    setInvEndDate(inv.end_date ? inv.end_date.substring(0, 16) : '');
+    setInvExpectedProfit(inv.expected_profit);
+    setInvExpectedProfitType(inv.expected_profit_type);
+    setInvDistributionFrequency(inv.distribution_frequency);
+    setInvIsAutomated(inv.is_automated);
+    setInvIsPaused(inv.is_paused);
+    setInvAutoReinvest(inv.auto_reinvest);
+    setInvStatus(inv.status);
+  };
+
+  const handlePauseInvestment = async (id) => {
+    try {
+      await api.post(`admin/investments/${id}/pause/`);
+      setSuccess('Investment paused.');
+      fetchAdminInvestments();
+    } catch (err) {
+      setError('Failed to pause investment.');
+    }
+  };
+
+  const handleResumeInvestment = async (id) => {
+    try {
+      await api.post(`admin/investments/${id}/resume/`);
+      setSuccess('Investment resumed.');
+      fetchAdminInvestments();
+    } catch (err) {
+      setError('Failed to resume investment.');
+    }
+  };
+
+  const handleCancelInvestment = async (id, refund) => {
+    try {
+      await api.post(`admin/investments/${id}/cancel/`, { refund });
+      setSuccess(`Investment cancelled. Refund: ${refund ? 'Yes' : 'No'}`);
+      fetchAdminInvestments();
+    } catch (err) {
+      setError('Failed to cancel investment.');
+    }
+  };
+
+  const handleTriggerPayout = async (id) => {
+    const amt = prompt('Enter profit amount to credit manually (leave blank for standard payout):');
+    if (amt === null) return;
+    
+    try {
+      const payload = amt ? { amount: parseFloat(amt) } : {};
+      await api.post(`admin/investments/${id}/trigger-payout/`, payload);
+      setSuccess('Manual payout triggered.');
+      fetchAdminInvestments();
+    } catch (err) {
+      setError('Failed to trigger payout.');
+    }
+  };
+
+  const handleToggleGlobalAutomation = async (val) => {
+    try {
+      await api.post('admin/investments/automation/', { global_enabled: val });
+      setGlobalAutomationEnabled(val);
+      setSuccess(`Global automation ${val ? 'enabled' : 'disabled'}.`);
+      fetchAutomationPanel();
+    } catch (err) {
+      setError('Failed to toggle global automation.');
+    }
+  };
+
+  const handleToggleUserAutomation = async (userId, val) => {
+    try {
+      await api.post('admin/investments/automation/', { user_id: userId, user_enabled: val });
+      setSuccess('User automation state updated.');
+      fetchAutomationPanel();
+    } catch (err) {
+      setError('Failed to update user automation.');
+    }
+  };
+
+  const handleDeleteInvestment = async (id) => {
+    if (!window.confirm('Are you sure you want to permanently delete this investment?')) return;
+    try {
+      await api.delete(`admin/investments/${id}/`);
+      setSuccess('Investment deleted.');
+      fetchAdminInvestments();
+    } catch (err) {
+      setError('Failed to delete investment.');
     }
   };
 
@@ -386,6 +582,22 @@ const AdminDashboard = () => {
       fetchUsers();
     } catch (err) {
       setError('Could not toggle freeze status.');
+    }
+  };
+
+  // Delete user account
+  const handleDeleteUser = async (userId) => {
+    if (!window.confirm('Are you sure you want to delete this user? This action is permanent and cannot be undone.')) {
+      return;
+    }
+    setError('');
+    setSuccess('');
+    try {
+      const res = await api.delete(`admin/users/${userId}/`);
+      setSuccess(res.data.message || 'User deleted successfully.');
+      fetchUsers();
+    } catch (err) {
+      setError('Could not delete user account.');
     }
   };
 
@@ -660,6 +872,22 @@ const AdminDashboard = () => {
         >
           <History size={16} /> System Addresses
         </button>
+        <button
+          onClick={() => setActiveTab('investments')}
+          className={`pb-3 px-4 text-xs font-bold transition flex items-center gap-2 border-b-2 ${
+            activeTab === 'investments' ? 'border-red-500 text-red-400' : 'border-transparent text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Layers size={16} /> User Investments
+        </button>
+        <button
+          onClick={() => setActiveTab('automation')}
+          className={`pb-3 px-4 text-xs font-bold transition flex items-center gap-2 border-b-2 ${
+            activeTab === 'automation' ? 'border-red-500 text-red-400' : 'border-transparent text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <ShieldAlert size={16} /> Automation Controls
+        </button>
       </div>
 
       {/* Tabs Content */}
@@ -749,6 +977,13 @@ const AdminDashboard = () => {
                           title="Edit Balances & Status"
                         >
                           <Settings size={14} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteUser(u.id)}
+                          className="p-1.5 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30"
+                          title="Delete User"
+                        >
+                          <Trash2 size={14} />
                         </button>
                       </td>
                     </tr>
@@ -1466,6 +1701,383 @@ const AdminDashboard = () => {
                                 <UserMinus size={12} />
                               </button>
                             </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 11: USER INVESTMENTS MANAGEMENT */}
+        {activeTab === 'investments' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Create/Edit Investment Form */}
+            <div className="lg:col-span-1 glass-panel p-6 rounded-xl h-fit">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4">
+                {editingInvestment ? 'Edit User Investment' : 'Create User Investment'}
+              </h3>
+              <form onSubmit={handleCreateOrUpdateInvestment} className="space-y-4">
+                <div>
+                  <label className="block text-[10px] text-slate-500 dark:text-gray-500 uppercase mb-2">Select User</label>
+                  <select
+                    value={invUser}
+                    onChange={(e) => setInvUser(e.target.value)}
+                    className="w-full p-2.5 rounded glass-input text-xs font-bold cursor-pointer"
+                    disabled={!!editingInvestment}
+                  >
+                    <option value="">-- Choose User --</option>
+                    {users.map(u => (
+                      <option key={u.id} value={u.id}>{u.full_name} (@{u.username})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-slate-500 dark:text-gray-500 uppercase mb-2">Select Package</label>
+                  <select
+                    value={invPlan}
+                    onChange={(e) => setInvPlan(e.target.value)}
+                    className="w-full p-2.5 rounded glass-input text-xs font-bold cursor-pointer"
+                  >
+                    <option value="">-- Choose Package --</option>
+                    {plans.map(p => (
+                      <option key={p.id} value={p.id}>{p.name} ({p.daily_profit_percent}% yield)</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] text-slate-500 dark:text-gray-500 uppercase mb-2">Principal Amount</label>
+                    <input
+                      type="number"
+                      step="any"
+                      required
+                      placeholder="1000.00"
+                      className="w-full p-2.5 rounded glass-input text-xs font-bold"
+                      value={invAmount}
+                      onChange={(e) => setInvAmount(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-500 dark:text-gray-500 uppercase mb-2">Currency</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="USDT"
+                      className="w-full p-2.5 rounded glass-input text-xs font-bold"
+                      value={invCurrency}
+                      onChange={(e) => setInvCurrency(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] text-slate-500 dark:text-gray-500 uppercase mb-2">Expected Profit</label>
+                    <input
+                      type="number"
+                      step="any"
+                      placeholder="15.00"
+                      className="w-full p-2.5 rounded glass-input text-xs font-bold"
+                      value={invExpectedProfit}
+                      onChange={(e) => setInvExpectedProfit(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-500 dark:text-gray-500 uppercase mb-2">Profit Type</label>
+                    <select
+                      value={invExpectedProfitType}
+                      onChange={(e) => setInvExpectedProfitType(e.target.value)}
+                      className="w-full p-2.5 rounded glass-input text-xs font-bold cursor-pointer"
+                    >
+                      <option value="PERCENT">Percentage (%)</option>
+                      <option value="ABSOLUTE">Absolute Amount ($)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-slate-500 dark:text-gray-500 uppercase mb-2">Payout Frequency</label>
+                  <select
+                    value={invDistributionFrequency}
+                    onChange={(e) => setInvDistributionFrequency(e.target.value)}
+                    className="w-full p-2.5 rounded glass-input text-xs font-bold cursor-pointer"
+                  >
+                    <option value="HOURLY">Hourly</option>
+                    <option value="CUSTOM_6H">Every 6 Hours</option>
+                    <option value="CUSTOM_12H">Every 12 Hours</option>
+                    <option value="DAILY">Daily</option>
+                    <option value="WEEKLY">Weekly</option>
+                    <option value="MATURITY">At Maturity</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] text-slate-500 dark:text-gray-500 uppercase mb-2">Start Date</label>
+                    <input
+                      type="datetime-local"
+                      className="w-full p-2.5 rounded glass-input text-xs"
+                      value={invStartDate}
+                      onChange={(e) => setInvStartDate(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-500 dark:text-gray-500 uppercase mb-2">End Date (Optional)</label>
+                    <input
+                      type="datetime-local"
+                      className="w-full p-2.5 rounded glass-input text-xs"
+                      value={invEndDate}
+                      onChange={(e) => setInvEndDate(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 py-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={invIsAutomated}
+                      onChange={(e) => setInvIsAutomated(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-350 dark:border-gray-800 text-cyanAccent bg-transparent"
+                    />
+                    <span className="text-xs font-bold text-slate-705 dark:text-gray-300">Automated Yields</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={invAutoReinvest}
+                      onChange={(e) => setInvAutoReinvest(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-350 dark:border-gray-800 text-cyanAccent bg-transparent"
+                    />
+                    <span className="text-xs font-bold text-slate-705 dark:text-gray-300">Auto Reinvest</span>
+                  </label>
+                </div>
+
+                {editingInvestment && (
+                  <div>
+                    <label className="block text-[10px] text-slate-500 dark:text-gray-500 uppercase mb-2">Status</label>
+                    <select
+                      value={invStatus}
+                      onChange={(e) => setInvStatus(e.target.value)}
+                      className="w-full p-2.5 rounded glass-input text-xs font-bold cursor-pointer"
+                    >
+                      <option value="PENDING">Pending</option>
+                      <option value="ACTIVE">Active</option>
+                      <option value="PAUSED">Paused</option>
+                      <option value="COMPLETED">Completed</option>
+                      <option value="CANCELLED">Cancelled</option>
+                    </select>
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="submit"
+                    disabled={submittingInvestment}
+                    className="flex-1 py-2.5 bg-cyanAccent text-black font-bold text-xs rounded hover:opacity-90 transition disabled:opacity-50 cursor-pointer"
+                  >
+                    {submittingInvestment ? 'Saving...' : editingInvestment ? 'Update Investment' : 'Create Investment'}
+                  </button>
+                  {editingInvestment && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingInvestment(null);
+                        resetInvestmentForm();
+                      }}
+                      className="py-2.5 px-4 border border-slate-200 dark:border-gray-800 text-slate-700 dark:text-gray-400 font-bold text-xs rounded hover:bg-slate-100 dark:hover:bg-gray-800/40 transition cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </form>
+            </div>
+
+            {/* Investments List Table */}
+            <div className="lg:col-span-2 glass-panel p-6 rounded-xl">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-6">User Portfolios</h3>
+              {adminInvestments.length === 0 ? (
+                <div className="text-center text-xs text-slate-400 py-12">No user investments recorded.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-gray-800 text-slate-500 dark:text-gray-400 font-bold">
+                        <th className="pb-3">User</th>
+                        <th className="pb-3">Plan</th>
+                        <th className="pb-3">Principal</th>
+                        <th className="pb-3">Yield / Expected</th>
+                        <th className="pb-3">Schedule</th>
+                        <th className="pb-3">Status</th>
+                        <th className="pb-3">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-150 dark:divide-gray-850 text-slate-700 dark:text-gray-300">
+                      {adminInvestments.map((inv) => (
+                        <tr key={inv.id} className="hover:bg-slate-100/50 dark:hover:bg-gray-900/10">
+                          <td className="py-4">
+                            <span className="font-bold text-slate-900 dark:text-white block">{inv.username}</span>
+                            <span className="text-[10px] text-gray-500 font-mono">INV-{inv.id}</span>
+                          </td>
+                          <td className="py-4 font-semibold text-slate-900 dark:text-white">
+                            {inv.plan_details?.name}
+                          </td>
+                          <td className="py-4 font-bold text-slate-900 dark:text-white">
+                            ${parseFloat(inv.amount).toFixed(2)} {inv.currency}
+                          </td>
+                          <td className="py-4">
+                            <span className="text-emeraldAccent font-bold block">+${parseFloat(inv.profit_accrued).toFixed(4)}</span>
+                            <span className="text-[10px] text-slate-500 font-medium">of {inv.expected_profit_type === 'PERCENT' ? `${inv.expected_profit}%` : `$${parseFloat(inv.expected_profit).toFixed(2)}`}</span>
+                          </td>
+                          <td className="py-4">
+                            <span className="block text-[10px] font-semibold text-gray-400">Freq: {inv.distribution_frequency}</span>
+                            <span className="text-[9px] text-gray-500 font-medium block">Next: {inv.next_payout_at ? new Date(inv.next_payout_at).toLocaleString() : 'N/A'}</span>
+                          </td>
+                          <td className="py-4">
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                              inv.status === 'ACTIVE' ? 'bg-emeraldAccent/15 text-emeraldAccent' :
+                              inv.status === 'PAUSED' ? 'bg-amber-500/15 text-amber-500' :
+                              inv.status === 'PENDING' ? 'bg-cyanAccent/15 text-cyanAccent' :
+                              'bg-slate-200 dark:bg-gray-800 text-slate-500'
+                            }`}>
+                              {inv.status}
+                            </span>
+                          </td>
+                          <td className="py-4">
+                            <div className="flex flex-wrap gap-1">
+                              {inv.status === 'ACTIVE' && (
+                                <button
+                                  onClick={() => handlePauseInvestment(inv.id)}
+                                  className="px-2 py-1 bg-amber-500/20 text-amber-500 rounded font-bold text-[9px] hover:bg-amber-500/30"
+                                >
+                                  Pause
+                                </button>
+                              )}
+                              {inv.status === 'PAUSED' && (
+                                <button
+                                  onClick={() => handleResumeInvestment(inv.id)}
+                                  className="px-2 py-1 bg-emeraldAccent/20 text-emeraldAccent rounded font-bold text-[9px] hover:bg-emeraldAccent/30"
+                                >
+                                  Resume
+                                </button>
+                              )}
+                              {(inv.status === 'ACTIVE' || inv.status === 'PAUSED') && (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      const ref = window.confirm('Refund principal amount back to user balance?');
+                                      handleCancelInvestment(inv.id, ref);
+                                    }}
+                                    className="px-2 py-1 bg-red-500/20 text-red-400 rounded font-bold text-[9px] hover:bg-red-500/30"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    onClick={() => handleTriggerPayout(inv.id)}
+                                    className="px-2 py-1 bg-cyanAccent/20 text-cyanAccent rounded font-bold text-[9px] hover:bg-cyanAccent/30"
+                                  >
+                                    Payout
+                                  </button>
+                                </>
+                              )}
+                              <button
+                                onClick={() => startEditInvestment(inv)}
+                                className="p-1 bg-slate-200 dark:bg-gray-800 text-slate-700 dark:text-gray-400 rounded hover:opacity-90"
+                              >
+                                <Settings size={10} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteInvestment(inv.id)}
+                                className="p-1 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30"
+                              >
+                                <Trash2 size={10} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 12: AUTOMATION CONTROLS PANEL */}
+        {activeTab === 'automation' && (
+          <div className="space-y-6">
+            <div className="glass-panel p-6 rounded-xl border border-slate-200 dark:border-gray-800">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-2">Automation Switches</h3>
+              <p className="text-xs text-gray-400 mb-6 font-medium">Control the automated profit distribution engine. Disabling a switch suspends scheduling events.</p>
+              
+              <div className="flex items-center justify-between p-4 bg-slate-100/40 dark:bg-gray-950/20 rounded-lg border border-slate-200 dark:border-gray-850">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900 dark:text-white">Global Auto Profit Distribution (Kill-Switch)</h4>
+                  <p className="text-[10px] text-gray-500 mt-1">Directly halts or resumes all scheduled profit credit payouts globally across the system.</p>
+                </div>
+                <button
+                  onClick={() => handleToggleGlobalAutomation(!globalAutomationEnabled)}
+                  className={`px-4 py-2 rounded text-xs font-black transition cursor-pointer ${
+                    globalAutomationEnabled ? 'bg-cyanAccent text-black' : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                  }`}
+                >
+                  {globalAutomationEnabled ? 'GLOBAL ENABLED' : 'GLOBAL DISABLED'}
+                </button>
+              </div>
+            </div>
+
+            {/* Scheduled payouts list */}
+            <div className="glass-panel p-6 rounded-xl border border-slate-200 dark:border-gray-800">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-6">Upcoming Scheduled Payouts</h3>
+              {scheduledPayouts.length === 0 ? (
+                <div className="text-center text-xs text-slate-400 py-12">No payouts currently scheduled. Make sure user investments are ACTIVE.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-gray-800 text-slate-500 dark:text-gray-400 font-bold">
+                        <th className="pb-3">Investment ID</th>
+                        <th className="pb-3">User</th>
+                        <th className="pb-3">Package</th>
+                        <th className="pb-3">Principal</th>
+                        <th className="pb-3">Payout Amount</th>
+                        <th className="pb-3">Scheduled Time</th>
+                        <th className="pb-3">Automation Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-150 dark:divide-gray-850 text-slate-700 dark:text-gray-300">
+                      {scheduledPayouts.map((sp) => (
+                        <tr key={sp.id} className="hover:bg-slate-100/50 dark:hover:bg-gray-900/10">
+                          <td className="py-3 font-mono text-gray-500">INV-{sp.id}</td>
+                          <td className="py-3 font-bold text-slate-900 dark:text-white">
+                            <span className="block">{sp.username}</span>
+                            <button
+                              onClick={() => handleToggleUserAutomation(sp.id, !sp.user_enabled)}
+                              className={`text-[9px] underline font-medium ${sp.user_enabled ? 'text-cyanAccent' : 'text-amber-500'}`}
+                            >
+                              User Automation: {sp.user_enabled ? 'ON' : 'OFF'}
+                            </button>
+                          </td>
+                          <td className="py-3 font-semibold text-slate-900 dark:text-white">{sp.plan_name}</td>
+                          <td className="py-3 font-semibold">${sp.amount.toFixed(2)}</td>
+                          <td className="py-3 font-bold text-emeraldAccent">${sp.amount_per_payout.toFixed(4)}</td>
+                          <td className="py-3 font-mono text-gray-400">{new Date(sp.next_payout_at).toLocaleString()}</td>
+                          <td className="py-3">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              (globalAutomationEnabled && sp.is_automated && !sp.is_paused && sp.user_enabled)
+                                ? 'bg-emeraldAccent/15 text-emeraldAccent'
+                                : 'bg-red-500/15 text-red-400'
+                            }`}>
+                              {(globalAutomationEnabled && sp.is_automated && !sp.is_paused && sp.user_enabled) ? 'Ready / Active' : 'Suspended'}
+                            </span>
                           </td>
                         </tr>
                       ))}

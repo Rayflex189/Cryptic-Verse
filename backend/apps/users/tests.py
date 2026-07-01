@@ -129,6 +129,8 @@ class ProfitCalculationsTests(TestCase):
             currency='USDT',
             status='ACTIVE'
         )
+        investment.next_payout_at = timezone.now() - timedelta(minutes=5)
+        investment.save()
         
         # Verify initial states
         self.assertEqual(float(investment.profit_accrued), 0.0)

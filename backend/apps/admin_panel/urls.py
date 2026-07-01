@@ -5,7 +5,7 @@ from .views import (
     AdminDepositViewSet, AdminWithdrawalViewSet, AdminKYCViewSet,
     AdminInvestmentPlanViewSet, AdminWebsiteSettingsViewSet,
     AdminAuditLogViewSet, broadcast_notification, AdminVIPUpgradeViewSet,
-    AdminTransactionViewSet
+    AdminTransactionViewSet, AdminInvestmentViewSet
 )
 
 router = DefaultRouter()
@@ -19,6 +19,7 @@ router.register(r'settings', AdminWebsiteSettingsViewSet, basename='admin_settin
 router.register(r'audit-logs', AdminAuditLogViewSet, basename='admin_auditlog')
 router.register(r'vip-upgrades', AdminVIPUpgradeViewSet, basename='admin_vip_upgrade')
 router.register(r'transactions', AdminTransactionViewSet, basename='admin_transaction')
+router.register(r'investments', AdminInvestmentViewSet, basename='admin_investment')
 
 
 urlpatterns = [
