@@ -133,9 +133,33 @@ class UserMeView(views.APIView):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def get_referrals(request):
-    referred_users = User.objects.filter(referred_by=request.user)
-    serializer = UserSerializer(referred_users, many=True)
-    return Response(serializer.data)
+    user = request.user
+    from users.models import Referral
+    
+    referrals = Referral.objects.filter(referrer=user).order_by('-created_at')
+    
+    history = []
+    total_earnings = 0
+    for ref in referrals:
+        total_earnings += float(ref.bonus_awarded)
+        history.append({
+            'username': ref.referred.username,
+            'email': ref.referred.email,
+            'date': ref.created_at.isoformat(),
+            'bonus_earned': float(ref.bonus_awarded),
+            'status': ref.status
+        })
+
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'https://www.crypticverse.online')
+    referral_link = f"{frontend_url}/register?ref={user.referral_code}"
+    
+    return Response({
+        'referral_code': user.referral_code,
+        'referral_link': referral_link,
+        'successful_referrals': referrals.count(),
+        'total_earnings': total_earnings,
+        'history': history
+    })
 
 # Mock/Token Verification Endpoints
 @api_view(['GET', 'POST'])

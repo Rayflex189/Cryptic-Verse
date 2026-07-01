@@ -23,6 +23,7 @@ import Invest from './pages/Invest/Invest';
 import KYC from './pages/KYC/KYC';
 import Support from './pages/Support/Support';
 import Profile from './pages/Profile/Profile';
+import Referrals from './pages/Referrals/Referrals';
 import DemoOne from './components/ui/demo';
 import UpgradeVIP from './pages/UpgradeVIP/UpgradeVIP';
 
@@ -60,6 +61,7 @@ const AppLayout = () => {
           <Route path="/kyc" element={<ProtectedRoute><KYC /></ProtectedRoute>} />
           <Route path="/support" element={<ProtectedRoute><Support /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+          <Route path="/referrals" element={<ProtectedRoute><Referrals /></ProtectedRoute>} />
 
           {/* Admin Routes */}
           <Route path="/admin/login" element={<AdminLogin />} />

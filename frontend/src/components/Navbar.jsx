@@ -116,6 +116,14 @@ const Navbar = () => {
                 >
                   Support
                 </Link>
+                <Link
+                  to="/referrals"
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition ${
+                    isActive('/referrals') ? 'text-cyanAccent' : 'text-slate-600 dark:text-gray-300 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  Referrals
+                </Link>
               </>
             ) : null}
           </div>
@@ -292,6 +300,13 @@ const Navbar = () => {
                 className="block px-3 py-2 rounded-md text-base font-medium text-slate-650 hover:text-slate-900 dark:text-gray-300 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-gray-800"
               >
                 Support
+              </Link>
+              <Link
+                to="/referrals"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block px-3 py-2 rounded-md text-base font-medium text-slate-650 hover:text-slate-900 dark:text-gray-300 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-gray-800"
+              >
+                Referrals
               </Link>
               <button
                 onClick={() => {

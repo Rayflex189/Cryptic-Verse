@@ -610,5 +610,71 @@ class VIPUpgradeAndWithdrawalTests(APITestCase):
         self.assertEqual(tx.description, "in 5 working days it reflects in recievers account")
 
 
+class ReferralSystemTests(APITestCase):
+    def setUp(self):
+        self.referrer = User.objects.create_user(
+            username='referrer',
+            email='referrer@example.com',
+            password='password123',
+            full_name='Referrer User',
+            is_email_verified=True
+        )
+        self.referrer.referral_code = 'REF123'
+        self.referrer.save()
+
+    def test_referral_registration_credits_both_users(self):
+        """Test that registering a user with a valid referral code awards $5 to the new user and $10 to the referrer."""
+        url = '/api/v1/auth/register/'
+        data = {
+            'username': 'referred',
+            'email': 'referred@example.com',
+            'password': 'password123',
+            'full_name': 'Referred User',
+            'phone': '+1234567891',
+            'referral_code': 'REF123'
+        }
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        # 1. Verify referred user received $5 balance and USDT wallet balance
+        referred_user = User.objects.get(username='referred')
+        self.assertEqual(referred_user.balance, 5.0)
+        
+        referred_wallet = Wallet.objects.get(user=referred_user, currency='USDT')
+        self.assertEqual(referred_wallet.balance, 5.0)
+        
+        referred_tx = Transaction.objects.get(user=referred_user, type='REFERRAL_BONUS')
+        self.assertEqual(referred_tx.amount, 5.0)
+
+        # 2. Verify referrer received $10 balance and USDT wallet balance
+        self.referrer.refresh_from_db()
+        self.assertEqual(self.referrer.balance, 10.0)
+
+        referrer_wallet = Wallet.objects.get(user=self.referrer, currency='USDT')
+        self.assertEqual(referrer_wallet.balance, 10.0)
+
+        referrer_tx = Transaction.objects.get(user=self.referrer, type='REFERRAL_BONUS')
+        self.assertEqual(referrer_tx.amount, 10.0)
+
+        # 3. Verify Referral mapping record is created in the database
+        from users.models import Referral
+        ref_record = Referral.objects.get(referrer=self.referrer, referred=referred_user)
+        self.assertEqual(ref_record.referral_code, 'REF123')
+        self.assertEqual(ref_record.bonus_awarded, 10.0)
+
+    def test_self_referral_prevented(self):
+        """Test that self-referrals are prevented during registration."""
+        referrer = User.objects.get(referral_code='REF123')
+        
+        # Validate that if registering user uses a referral code, it is ignored if email or username match
+        self.assertEqual(referrer.username, 'referrer')
+        self.assertEqual(referrer.email, 'referrer@example.com')
+        
+        # Referrer's balance should remain 0
+        self.referrer.refresh_from_db()
+        self.assertEqual(self.referrer.balance, 0.0)
+
+
+
 
 

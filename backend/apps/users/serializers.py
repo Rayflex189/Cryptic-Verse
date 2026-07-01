@@ -96,7 +96,9 @@ class RegisterSerializer(serializers.ModelSerializer):
         referred_by = None
         if referral_code:
             try:
-                referred_by = User.objects.get(referral_code=referral_code)
+                referrer = User.objects.get(referral_code=referral_code)
+                if referrer.username != validated_data.get('username') and referrer.email != validated_data.get('email'):
+                    referred_by = referrer
             except User.DoesNotExist:
                 pass
         
@@ -104,6 +106,54 @@ class RegisterSerializer(serializers.ModelSerializer):
         user = User(**validated_data, referred_by=referred_by)
         user.set_password(password)
         user.save()
+
+        if referred_by:
+            from django.db import transaction as db_transaction
+            from wallets.models import Wallet
+            from transactions.models import Transaction
+            from users.models import Referral
+            from decimal import Decimal
+
+            with db_transaction.atomic():
+                # 1. Store the referral mapping
+                Referral.objects.create(
+                    referrer=referred_by,
+                    referred=user,
+                    referral_code=referral_code,
+                    status='COMPLETED',
+                    bonus_awarded=Decimal('10.0')
+                )
+
+                # 2. Award $5 signup bonus to the referred user's USDT wallet
+                referred_wallet, _ = Wallet.objects.get_or_create(user=user, currency='USDT')
+                referred_wallet.balance += Decimal('5.0')
+                referred_wallet.save(update_fields=['balance'])
+
+                Transaction.objects.create(
+                    user=user,
+                    wallet=referred_wallet,
+                    type='REFERRAL_BONUS',
+                    amount=Decimal('5.0'),
+                    currency='USDT',
+                    description=f"Signup referral bonus via code {referral_code}",
+                    status='COMPLETED'
+                )
+
+                # 3. Award $10 bonus to the referrer's USDT wallet
+                referrer_wallet, _ = Wallet.objects.get_or_create(user=referred_by, currency='USDT')
+                referrer_wallet.balance += Decimal('10.0')
+                referrer_wallet.save(update_fields=['balance'])
+
+                Transaction.objects.create(
+                    user=referred_by,
+                    wallet=referrer_wallet,
+                    type='REFERRAL_BONUS',
+                    amount=Decimal('10.0'),
+                    currency='USDT',
+                    description=f"Referral reward for inviting {user.username}",
+                    status='COMPLETED'
+                )
+
         return user
 
 class VIPUpgradeRequestSerializer(serializers.ModelSerializer):

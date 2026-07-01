@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useTheme } from '../../hooks/useTheme';
 import api from '../../api/api';
-import { Shield, Users, ArrowUpCircle, ArrowDownCircle, FileCheck, Megaphone, History, UserMinus, UserCheck, Plus, Minus, Eye, Settings, LogOut, Check, X, ShieldAlert, Award, Sun, Moon, Receipt, Trash2 } from 'lucide-react';
+import { Shield, Users, ArrowUpCircle, ArrowDownCircle, FileCheck, Megaphone, History, UserMinus, UserCheck, Plus, Minus, Eye, Settings, LogOut, Check, X, ShieldAlert, Award, Sun, Moon, Receipt, Trash2, Layers } from 'lucide-react';
 
 const AdminDashboard = () => {
   const { adminUser, adminLogout } = useAuth();
