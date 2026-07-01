@@ -26,6 +26,7 @@ class WalletViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 class AdminWalletAddressViewSet(viewsets.ModelViewSet):
+    authentication_classes = ()
     serializer_class = AdminWalletAddressSerializer
     permission_classes = [IsAdminUserToken]
     queryset = AdminWalletAddress.objects.all()

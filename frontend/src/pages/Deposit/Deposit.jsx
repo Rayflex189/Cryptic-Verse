@@ -140,7 +140,7 @@ const Deposit = () => {
             <div>
               <label className="text-xs font-semibold text-gray-400 block mb-2">Your receiving address</label>
               <div className="p-3 bg-slate-100 dark:bg-[#111827] border border-slate-200 dark:border-gray-800 rounded text-xs text-cyanAccent select-all font-mono">
-                {userWallet?.address || 'No address saved by administrator'}
+                {userWallet?.address || 'no wallet address for currency'}
               </div>
             </div>
           </div>
@@ -153,7 +153,7 @@ const Deposit = () => {
               <div className="text-left">
                 <span className="text-[10px] text-gray-400 block font-semibold">Official receiving {selectedCurrency} address:</span>
                 <span className="text-xs font-bold text-slate-900 dark:text-white select-all font-mono break-all">
-                  {userWallet?.address || 'No address saved by administrator'}
+                  {userWallet?.address || 'no wallet address for currency'}
                 </span>
               </div>
               {userWallet?.address && (

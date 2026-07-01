@@ -1666,7 +1666,7 @@ const AdminDashboard = () => {
               <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4">Active System Receiving Addresses</h3>
               <p className="text-xs text-gray-400 mb-6 font-medium">These addresses are displayed dynamically across all user accounts when they request deposit details or check their ledger wallets.</p>
               {adminWalletAddresses.length === 0 ? (
-                <div className="text-center text-xs text-slate-400 py-12">No system receiving addresses configured. Users will see "No address saved by administrator".</div>
+                <div className="text-center text-xs text-slate-400 py-12">No system receiving addresses configured. Users will see "no wallet address for currency".</div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse text-xs">

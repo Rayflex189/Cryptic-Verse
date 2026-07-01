@@ -120,7 +120,7 @@ const WalletView = () => {
               </div>
             ) : (
               <div className="text-[10px] text-red-500 dark:text-red-400 font-bold mt-2">
-                No address saved by administrator
+                no wallet address for currency
               </div>
             )}
           </div>
