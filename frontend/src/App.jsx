@@ -66,6 +66,7 @@ const AppLayout = () => {
           {/* Admin Routes */}
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/dashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+          <Route path="/admin/support" element={<AdminRoute><AdminDashboard defaultTab="support" /></AdminRoute>} />
         </Routes>
       </div>
       {!isAdminPath && !isDemoPath && <Footer />}

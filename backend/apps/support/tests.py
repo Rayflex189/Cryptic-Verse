@@ -124,3 +124,42 @@ class SupportTicketImageMessagingTestCase(TestCase):
         url = f'/api/v1/support/tickets/{ticket.id}/messages/'
         response = self.client.post(url, {'attachment': fake_exe}, format='multipart')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_admin_filter_and_search_tickets(self):
+        """Test admin can filter tickets by status and search query."""
+        ticket1 = SupportTicket.objects.create(user=self.user, subject='Crypto Withdrawal Help', message='Pending WD', status='OPEN')
+        ticket2 = SupportTicket.objects.create(user=self.user, subject='KYC Verification', message='KYC status', status='RESOLVED')
+        
+        # Test status filter
+        url = '/api/v1/admin/support/tickets/?status=RESOLVED'
+        res = self.admin_client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res.data), 1)
+        self.assertEqual(res.data[0]['id'], ticket2.id)
+
+        # Test search filter
+        url = '/api/v1/admin/support/tickets/?search=Withdrawal'
+        res = self.admin_client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res.data), 1)
+        self.assertEqual(res.data[0]['id'], ticket1.id)
+
+    def test_admin_update_ticket_status_patch(self):
+        """Test admin can patch ticket status directly."""
+        ticket = SupportTicket.objects.create(user=self.user, subject='Billing Query', message='Details needed', status='OPEN')
+        url = f'/api/v1/admin/support/tickets/{ticket.id}/status/'
+        res = self.admin_client.patch(url, {'status': 'CLOSED'}, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, 'CLOSED')
+        self.assertIsNotNone(ticket.resolved_at)
+
+    def test_user_reply_reopens_closed_ticket(self):
+        """Test user reply automatically changes ticket status back to IN_PROGRESS if resolved or closed."""
+        ticket = SupportTicket.objects.create(user=self.user, subject='Reopen Test', message='First message', status='RESOLVED')
+        url = f'/api/v1/support/tickets/{ticket.id}/messages/'
+        res = self.client.post(url, {'message': 'Follow up question'}, format='multipart')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, 'IN_PROGRESS')
+

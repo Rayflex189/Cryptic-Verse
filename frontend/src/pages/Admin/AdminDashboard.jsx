@@ -1,15 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useTheme } from '../../hooks/useTheme';
 import api from '../../api/api';
-import { Shield, Users, ArrowUpCircle, ArrowDownCircle, FileCheck, Megaphone, History, UserMinus, UserCheck, Plus, Minus, Eye, Settings, LogOut, Check, X, ShieldAlert, Award, Sun, Moon, Receipt, Trash2, Layers, LifeBuoy, MessageSquare, Image as ImageIcon, Maximize2 } from 'lucide-react';
+import { Shield, Users, ArrowUpCircle, ArrowDownCircle, FileCheck, Megaphone, History, UserMinus, UserCheck, Plus, Minus, Eye, Settings, LogOut, Check, X, ShieldAlert, Award, Sun, Moon, Receipt, Trash2, Layers, LifeBuoy, MessageSquare, Image as ImageIcon, Maximize2, Send } from 'lucide-react';
 
-const AdminDashboard = () => {
+const AdminDashboard = ({ defaultTab }) => {
   const { adminUser, adminLogout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('stats');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabFromQuery = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState(() => defaultTab || tabFromQuery || 'stats');
+
+  useEffect(() => {
+    const targetTab = defaultTab || tabFromQuery;
+    if (targetTab && ['stats', 'users', 'deposits', 'withdrawals', 'kyc', 'plans', 'automation', 'platform_settings', 'support'].includes(targetTab)) {
+      setActiveTab(targetTab);
+    }
+  }, [defaultTab, tabFromQuery]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
