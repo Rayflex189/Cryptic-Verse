@@ -25,6 +25,14 @@ class User(AbstractUser):
     ssn_encrypted = models.CharField(max_length=255, blank=True, db_column='ssn')
     
     is_email_verified = models.BooleanField(default=False)
+    verification_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('PENDING', 'Pending Verification'),
+            ('VERIFIED', 'Verified')
+        ],
+        default='PENDING'
+    )
     is_phone_verified = models.BooleanField(default=False)
     kyc_status = models.CharField(
         max_length=20,
@@ -93,6 +101,13 @@ class User(AbstractUser):
     def save(self, *args, **kwargs):
         if not self.referral_code:
             self.referral_code = str(uuid.uuid4())[:8].upper()
+
+        if self.verification_status == 'VERIFIED' or self.is_email_verified:
+            self.verification_status = 'VERIFIED'
+            self.is_email_verified = True
+        else:
+            self.verification_status = 'PENDING'
+            self.is_email_verified = False
             
         is_new = self.pk is None
         old_balance = None

@@ -91,9 +91,48 @@ const AdminDashboard = () => {
   const [bcMessage, setBcMessage] = useState('');
   const [submittingBc, setSubmittingBc] = useState(false);
 
+  // Support Verification Modal State
+  const [supportModalWithdrawal, setSupportModalWithdrawal] = useState(null);
+
+  // Platform Settings State
+  const [platformSettings, setPlatformSettings] = useState({
+    vip_upgrade_fee: 200,
+    company_wallet_address: '0x71C7656EC7ab88b098defB751B7401B5f6d8976F',
+    wallet_network: 'ERC20',
+    conversion_fee_pct: 1.0,
+    enable_currency_converter: true,
+    enable_vip_upgrade: true,
+    enable_withdrawals: true
+  });
+  const [savingPlatformSettings, setSavingPlatformSettings] = useState(false);
+
+  // User Filter & Search State
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userStatusFilter, setUserStatusFilter] = useState('ALL'); // ALL, PENDING, VERIFIED
+
+  const handleToggleVerification = async (userId) => {
+    try {
+      const res = await api.post(`admin/users/${userId}/verify/`);
+      setSuccess(res.data.message);
+      fetchUsers();
+    } catch (err) {
+      setError('Could not update account verification status.');
+    }
+  };
+
   useEffect(() => {
     fetchStats();
+    fetchPlatformSettings();
   }, []);
+
+  const fetchPlatformSettings = async () => {
+    try {
+      const res = await api.get('platform-settings/');
+      if (res.data) setPlatformSettings(res.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   useEffect(() => {
     setError('');
@@ -109,6 +148,7 @@ const AdminDashboard = () => {
     if (activeTab === 'system_wallets') fetchAdminWalletAddresses();
     if (activeTab === 'investments') fetchAdminInvestments();
     if (activeTab === 'automation') fetchAutomationPanel();
+    if (activeTab === 'platform_settings') fetchPlatformSettings();
   }, [activeTab]);
 
   const fetchStats = async () => {
@@ -747,6 +787,22 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleSavePlatformSettings = async (e) => {
+    e.preventDefault();
+    setSavingPlatformSettings(true);
+    setError('');
+    setSuccess('');
+    try {
+      await api.post('admin/platform-settings/', platformSettings);
+      setSuccess('Platform settings updated successfully.');
+      fetchPlatformSettings();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to update platform settings.');
+    } finally {
+      setSavingPlatformSettings(false);
+    }
+  };
+
   const handleLogout = () => {
     adminLogout();
     navigate('/admin/login');
@@ -909,6 +965,14 @@ const AdminDashboard = () => {
         >
           <ShieldAlert size={16} /> Automation Controls
         </button>
+        <button
+          onClick={() => setActiveTab('platform_settings')}
+          className={`pb-3 px-4 text-xs font-bold transition flex items-center gap-2 border-b-2 ${
+            activeTab === 'platform_settings' ? 'border-red-500 text-red-400' : 'border-transparent text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Settings size={16} /> Platform Settings
+        </button>
       </div>
 
       {/* Tabs Content */}
@@ -952,63 +1016,143 @@ const AdminDashboard = () => {
 
         {/* TAB 2: USER MANAGEMENT */}
         {activeTab === 'users' && (
-          <div className="glass-panel rounded-xl p-6 overflow-hidden">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-6">User Accounts & Ledgers</h3>
+          <div className="glass-panel rounded-xl p-6 overflow-hidden text-left font-sans">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">User Accounts & Verification Management</h3>
+                <p className="text-xs text-gray-400">Review registered accounts, search by name/username/email, and verify accounts directly.</p>
+              </div>
+
+              {/* Filter Tabs & Search */}
+              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                <div className="flex bg-slate-100 dark:bg-gray-900 p-1 rounded-lg border border-slate-200 dark:border-gray-800 text-[11px]">
+                  <button
+                    onClick={() => setUserStatusFilter('ALL')}
+                    className={`px-3 py-1 rounded font-bold transition cursor-pointer ${
+                      userStatusFilter === 'ALL' ? 'bg-cyanAccent text-black shadow-sm' : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    All Users ({users.length})
+                  </button>
+                  <button
+                    onClick={() => setUserStatusFilter('PENDING')}
+                    className={`px-3 py-1 rounded font-bold transition cursor-pointer ${
+                      userStatusFilter === 'PENDING' ? 'bg-yellow-500 text-black shadow-sm' : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    Pending Verification ({users.filter(u => u.verification_status !== 'VERIFIED' && !u.is_email_verified).length})
+                  </button>
+                  <button
+                    onClick={() => setUserStatusFilter('VERIFIED')}
+                    className={`px-3 py-1 rounded font-bold transition cursor-pointer ${
+                      userStatusFilter === 'VERIFIED' ? 'bg-emeraldAccent text-black shadow-sm' : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    Verified ({users.filter(u => u.verification_status === 'VERIFIED' || u.is_email_verified).length})
+                  </button>
+                </div>
+
+                <input
+                  type="text"
+                  placeholder="Search by name, username, email..."
+                  value={userSearchQuery}
+                  onChange={(e) => setUserSearchQuery(e.target.value)}
+                  className="px-3 py-1.5 rounded glass-input text-xs font-medium w-full sm:w-64"
+                />
+              </div>
+            </div>
+
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="border-b border-slate-200 dark:border-gray-855 text-slate-555 dark:text-gray-400 font-semibold uppercase tracking-wider">
+                  <tr className="border-b border-slate-200 dark:border-gray-850 text-slate-500 dark:text-gray-400 font-semibold uppercase tracking-wider">
                     <th className="pb-3">User Details</th>
-                    <th className="pb-3">Email</th>
+                    <th className="pb-3">Email Address</th>
+                    <th className="pb-3">Verification Status</th>
                     <th className="pb-3">Balance</th>
                     <th className="pb-3">KYC Lvl</th>
                     <th className="pb-3">Freeze State</th>
-                    <th className="pb-3">Actions</th>
+                    <th className="pb-3">Verification & Admin Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-150 dark:divide-gray-855 text-slate-700 dark:text-gray-300">
-                  {users.map((u) => (
-                    <tr key={u.id} className="hover:bg-slate-100/50 dark:hover:bg-gray-900/10">
-                      <td className="py-3 font-semibold text-slate-900 dark:text-white">
-                        {u.full_name} <span className="text-[10px] text-gray-500">(@{u.username})</span>
-                      </td>
-                      <td className="py-3">{u.email}</td>
-                      <td className="py-3 font-bold">${parseFloat(u.balance).toFixed(2)}</td>
-                      <td className="py-3">Level {u.kyc_level}</td>
-                      <td className="py-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          u.is_frozen ? 'bg-red-500/15 text-red-400' : 'bg-emeraldAccent/15 text-emeraldAccent'
-                        }`}>
-                          {u.is_frozen ? 'Frozen' : 'Active'}
-                        </span>
-                      </td>
-                      <td className="py-3 flex gap-2">
-                        <button
-                          onClick={() => handleToggleFreeze(u.id)}
-                          className={`p-1.5 rounded transition ${
-                            u.is_frozen ? 'bg-emeraldAccent/20 text-emeraldAccent' : 'bg-red-500/20 text-red-400'
-                          }`}
-                          title={u.is_frozen ? 'Activate' : 'Freeze'}
-                        >
-                          {u.is_frozen ? <UserCheck size={14} /> : <UserMinus size={14} />}
-                        </button>
-                        <button
-                          onClick={() => handleEditUser(u)}
-                          className="p-1.5 bg-cyanAccent/20 text-cyanAccent rounded hover:bg-cyanAccent/30"
-                          title="Edit Balances & Status"
-                        >
-                          <Settings size={14} />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteUser(u.id)}
-                          className="p-1.5 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30"
-                          title="Delete User"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                <tbody className="divide-y divide-slate-150 dark:divide-gray-850 text-slate-700 dark:text-gray-300">
+                  {users
+                    .filter((u) => {
+                      const matchesSearch =
+                        !userSearchQuery ||
+                        u.full_name?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+                        u.username?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+                        u.email?.toLowerCase().includes(userSearchQuery.toLowerCase());
+                      const isVerified = u.verification_status === 'VERIFIED' || u.is_email_verified;
+                      const matchesStatus =
+                        userStatusFilter === 'ALL' ||
+                        (userStatusFilter === 'VERIFIED' && isVerified) ||
+                        (userStatusFilter === 'PENDING' && !isVerified);
+                      return matchesSearch && matchesStatus;
+                    })
+                    .map((u) => {
+                      const isVerified = u.verification_status === 'VERIFIED' || u.is_email_verified;
+                      return (
+                        <tr key={u.id} className="hover:bg-slate-100/50 dark:hover:bg-gray-900/10">
+                          <td className="py-3 font-semibold text-slate-900 dark:text-white">
+                            {u.full_name || 'No Name'} <span className="text-[10px] text-gray-400 font-mono">(@{u.username})</span>
+                          </td>
+                          <td className="py-3">{u.email}</td>
+                          <td className="py-3">
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                              isVerified ? 'bg-emeraldAccent/15 text-emeraldAccent' : 'bg-yellow-500/15 text-yellow-500'
+                            }`}>
+                              {isVerified ? 'Verified' : 'Pending Verification'}
+                            </span>
+                          </td>
+                          <td className="py-3 font-bold">${parseFloat(u.balance).toFixed(2)}</td>
+                          <td className="py-3">Level {u.kyc_level}</td>
+                          <td className="py-3">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              u.is_frozen ? 'bg-red-500/15 text-red-400' : 'bg-emeraldAccent/15 text-emeraldAccent'
+                            }`}>
+                              {u.is_frozen ? 'Frozen' : 'Active'}
+                            </span>
+                          </td>
+                          <td className="py-3 flex items-center gap-2">
+                            <button
+                              onClick={() => handleToggleVerification(u.id)}
+                              className={`px-3 py-1 rounded text-[10px] font-bold flex items-center gap-1 cursor-pointer transition ${
+                                isVerified
+                                  ? 'bg-yellow-500/20 text-yellow-500 hover:bg-yellow-500 hover:text-black'
+                                  : 'bg-emeraldAccent text-black hover:opacity-90 shadow-sm'
+                              }`}
+                              title={isVerified ? 'Set to Pending' : 'Verify Account'}
+                            >
+                              {isVerified ? 'Set Pending' : '✓ Verify Account'}
+                            </button>
+                            <button
+                              onClick={() => handleToggleFreeze(u.id)}
+                              className={`p-1.5 rounded transition ${
+                                u.is_frozen ? 'bg-emeraldAccent/20 text-emeraldAccent' : 'bg-red-500/20 text-red-400'
+                              }`}
+                              title={u.is_frozen ? 'Activate Account' : 'Freeze Account'}
+                            >
+                              {u.is_frozen ? <UserCheck size={14} /> : <UserMinus size={14} />}
+                            </button>
+                            <button
+                              onClick={() => handleEditUser(u)}
+                              className="p-1.5 bg-cyanAccent/20 text-cyanAccent rounded hover:bg-cyanAccent/30"
+                              title="Edit Balances & Status"
+                            >
+                              <Settings size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUser(u.id)}
+                              className="p-1.5 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30"
+                              title="Delete User"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>
@@ -1095,7 +1239,8 @@ const AdminDashboard = () => {
                   <div key={w.id} className="border border-slate-200 dark:border-gray-800 rounded-lg p-6 bg-slate-100/40 dark:bg-gray-950/20 flex flex-col md:flex-row md:justify-between gap-6 text-xs text-left transition-colors duration-300">
                     <div className="space-y-1.5 flex-1">
                       <div className="flex items-center gap-2 mb-2">
-                        <span className="font-bold text-slate-900 dark:text-white">Withdrawal #{w.id}</span>
+                        <span className="font-bold text-cyanAccent font-mono">{w.transaction_code || `WD-${w.id}`}</span>
+                        <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-cyanAccent/15 text-cyanAccent uppercase">{w.method || 'CRYPTO'}</span>
                         <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase ${
                           w.status === 'COMPLETED' ? 'bg-emeraldAccent/15 text-emeraldAccent' :
                           w.status === 'REJECTED' ? 'bg-red-500/15 text-red-400' :
@@ -1104,27 +1249,26 @@ const AdminDashboard = () => {
                       </div>
                       <p className="text-slate-500 dark:text-gray-400">User: <span className="text-slate-900 dark:text-white">@{w.user}</span></p>
                       <p className="text-slate-500 dark:text-gray-400">Payout Amount: <span className="text-slate-900 dark:text-white font-bold">${parseFloat(w.amount).toLocaleString()} {w.currency}</span></p>
-                      <p className="text-slate-500 dark:text-gray-400">Destination Address: <span className="text-slate-900 dark:text-white font-mono break-all">{w.withdrawal_address}</span></p>
+                      <p className="text-slate-500 dark:text-gray-400">Destination Details: <span className="text-slate-900 dark:text-white font-mono break-all">{w.address || w.withdrawal_address}</span></p>
                       <p className="text-slate-500 dark:text-gray-400">Created: <span className="text-slate-900 dark:text-white">{new Date(w.created_at).toLocaleString()}</span></p>
                     </div>
 
-                    {/* CONFIRMED means user confirmed with OTP on frontend, wait for admin processing */}
-                    {['PENDING', 'CONFIRMED', 'PROCESSING'].includes(w.status) && (
-                      <div className="flex flex-col gap-2 w-full md:w-60">
-                        <label className="block text-[10px] text-slate-500 dark:text-gray-500 uppercase">Operator Remarks</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Sent via Binance node"
-                          className="p-2 rounded glass-input text-xs"
-                          onChange={(e) => setAdminNotes(e.target.value)}
-                        />
+                    <div className="flex flex-col gap-2 w-full md:w-60 justify-center">
+                      <button
+                        onClick={() => setSupportModalWithdrawal(w)}
+                        className="py-2.5 px-4 bg-cyanAccent/15 border border-cyanAccent/40 text-cyanAccent hover:bg-cyanAccent hover:text-black font-bold text-xs rounded transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                      >
+                        <ShieldAlert size={14} /> Contact Support / Verification
+                      </button>
+
+                      {['PENDING', 'CONFIRMED', 'PROCESSING'].includes(w.status) && (
                         <div className="flex gap-2 mt-1">
                           <button
                             onClick={() => handleWithdrawalAction(w.id, 'COMPLETED')}
                             disabled={processingId === w.id}
                             className="flex-1 py-2 bg-emeraldAccent text-black font-bold text-xs rounded hover:opacity-90 transition flex items-center justify-center gap-1 cursor-pointer"
                           >
-                            <Check size={14} /> Complete
+                            <Check size={14} /> Approve
                           </button>
                           <button
                             onClick={() => handleWithdrawalAction(w.id, 'REJECTED')}
@@ -1134,8 +1278,8 @@ const AdminDashboard = () => {
                             <X size={14} /> Reject
                           </button>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -2136,6 +2280,115 @@ const AdminDashboard = () => {
           </div>
         )}
 
+        {/* TAB 12: PLATFORM SETTINGS */}
+        {activeTab === 'platform_settings' && (
+          <div className="glass-panel rounded-xl p-6 max-w-2xl mx-auto text-left">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
+              <Settings className="text-cyanAccent" /> Global Platform Settings
+            </h3>
+            <p className="text-xs text-gray-400 mb-6">Manage global fees, active company USDT upgrade wallet, conversion fees, and feature switches without code edits.</p>
+
+            <form onSubmit={handleSavePlatformSettings} className="space-y-6">
+              <div className="border border-slate-200 dark:border-gray-800 rounded-lg p-5 bg-slate-100/30 dark:bg-gray-950/20 space-y-4">
+                <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">Company VIP Wallet Address</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <label className="block text-[10px] text-gray-400 uppercase font-semibold mb-1">Company Wallet Address</label>
+                    <input
+                      type="text"
+                      required
+                      value={platformSettings.company_wallet_address}
+                      onChange={(e) => setPlatformSettings({ ...platformSettings, company_wallet_address: e.target.value })}
+                      className="w-full p-2.5 rounded glass-input text-xs font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-400 uppercase font-semibold mb-1">Network</label>
+                    <select
+                      value={platformSettings.wallet_network}
+                      onChange={(e) => setPlatformSettings({ ...platformSettings, wallet_network: e.target.value })}
+                      className="w-full p-2.5 rounded glass-input text-xs font-bold cursor-pointer"
+                    >
+                      <option value="ERC20">ERC20 (Ethereum)</option>
+                      <option value="TRC20">TRC20 (Tron)</option>
+                      <option value="BEP20">BEP20 (BNB Smart Chain)</option>
+                      <option value="SOL">Solana</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-400 uppercase font-semibold mb-1">VIP 2 Upgrade Fee ($)</label>
+                    <input
+                      type="number"
+                      step="any"
+                      required
+                      value={platformSettings.vip_upgrade_fee}
+                      onChange={(e) => setPlatformSettings({ ...platformSettings, vip_upgrade_fee: e.target.value })}
+                      className="w-full p-2.5 rounded glass-input text-xs font-bold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="border border-slate-200 dark:border-gray-800 rounded-lg p-5 bg-slate-100/30 dark:bg-gray-950/20 space-y-4">
+                <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">Currency Converter & Fee Controls</h4>
+                <div>
+                  <label className="block text-[10px] text-gray-400 uppercase font-semibold mb-1">Conversion Fee Percentage (%)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    required
+                    value={platformSettings.conversion_fee_pct}
+                    onChange={(e) => setPlatformSettings({ ...platformSettings, conversion_fee_pct: e.target.value })}
+                    className="w-full p-2.5 rounded glass-input text-xs font-bold"
+                  />
+                  <span className="text-[10px] text-gray-500 mt-1 block">Default 1.00 for 1% fee deduction on executed exchanges.</span>
+                </div>
+              </div>
+
+              <div className="border border-slate-200 dark:border-gray-800 rounded-lg p-5 bg-slate-100/30 dark:bg-gray-950/20 space-y-4">
+                <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">Feature Toggles</h4>
+                <div className="space-y-3">
+                  <label className="flex items-center justify-between cursor-pointer p-2 rounded hover:bg-slate-100 dark:hover:bg-gray-800/40">
+                    <span className="text-xs font-semibold text-slate-800 dark:text-gray-300">Enable Currency Converter Widget</span>
+                    <input
+                      type="checkbox"
+                      checked={platformSettings.enable_currency_converter}
+                      onChange={(e) => setPlatformSettings({ ...platformSettings, enable_currency_converter: e.target.checked })}
+                      className="h-4 w-4 accent-cyanAccent cursor-pointer"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between cursor-pointer p-2 rounded hover:bg-slate-100 dark:hover:bg-gray-800/40">
+                    <span className="text-xs font-semibold text-slate-800 dark:text-gray-300">Enable VIP Upgrade Flow</span>
+                    <input
+                      type="checkbox"
+                      checked={platformSettings.enable_vip_upgrade}
+                      onChange={(e) => setPlatformSettings({ ...platformSettings, enable_vip_upgrade: e.target.checked })}
+                      className="h-4 w-4 accent-cyanAccent cursor-pointer"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between cursor-pointer p-2 rounded hover:bg-slate-100 dark:hover:bg-gray-800/40">
+                    <span className="text-xs font-semibold text-slate-800 dark:text-gray-300">Enable Withdrawal System</span>
+                    <input
+                      type="checkbox"
+                      checked={platformSettings.enable_withdrawals}
+                      onChange={(e) => setPlatformSettings({ ...platformSettings, enable_withdrawals: e.target.checked })}
+                      className="h-4 w-4 accent-cyanAccent cursor-pointer"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={savingPlatformSettings}
+                className="w-full py-3 bg-gradient-to-r from-cyanAccent to-emeraldAccent text-black font-bold text-xs rounded hover:opacity-90 transition disabled:opacity-50 cursor-pointer shadow-md"
+              >
+                {savingPlatformSettings ? 'Saving Settings...' : 'Save Platform Settings'}
+              </button>
+            </form>
+          </div>
+        )}
+
       </div>
 
       {/* USER EDIT/BALANCE DIALOG */}
@@ -2350,6 +2603,87 @@ const AdminDashboard = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* CONTACT SUPPORT VERIFICATION MODAL */}
+      {supportModalWithdrawal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-white dark:bg-[#111827] border border-cyanAccent/40 rounded-xl shadow-2xl p-6 text-left transition-colors duration-300 space-y-5">
+            <div className="flex justify-between items-center border-b border-slate-200 dark:border-gray-800 pb-3">
+              <h3 className="text-sm font-black text-cyanAccent uppercase tracking-wider flex items-center gap-2">
+                <ShieldAlert size={18} /> Support Verification - Withdrawal {supportModalWithdrawal.transaction_code || supportModalWithdrawal.id}
+              </h3>
+              <button
+                onClick={() => setSupportModalWithdrawal(null)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-500 text-xs font-semibold leading-relaxed">
+              This withdrawal requires administrative verification. Contact support to complete the withdrawal process.
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between py-1 border-b border-slate-100 dark:border-gray-850">
+                <span className="text-gray-400">User Account:</span>
+                <span className="font-bold text-slate-900 dark:text-white">@{supportModalWithdrawal.user}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-100 dark:border-gray-850">
+                <span className="text-gray-400">Transaction Code:</span>
+                <span className="font-mono font-bold text-cyanAccent">{supportModalWithdrawal.transaction_code || `WD-${supportModalWithdrawal.id}`}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-100 dark:border-gray-850">
+                <span className="text-gray-400">Payout Amount:</span>
+                <span className="font-bold text-red-400">${parseFloat(supportModalWithdrawal.amount).toFixed(2)} {supportModalWithdrawal.currency}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-100 dark:border-gray-850">
+                <span className="text-gray-400">Withdrawal Method:</span>
+                <span className="font-bold uppercase text-slate-900 dark:text-white">{supportModalWithdrawal.method || 'CRYPTO'}</span>
+              </div>
+              <div className="py-2">
+                <span className="text-gray-400 block mb-1">Destination / Payout Details:</span>
+                <div className="p-2.5 rounded bg-slate-100 dark:bg-gray-900 border border-slate-200 dark:border-gray-800 font-mono text-[11px] break-all text-slate-800 dark:text-gray-200">
+                  {supportModalWithdrawal.address || supportModalWithdrawal.withdrawal_address}
+                </div>
+              </div>
+            </div>
+
+            {['PENDING', 'CONFIRMED', 'PROCESSING'].includes(supportModalWithdrawal.status) && (
+              <div className="space-y-3 pt-2">
+                <label className="block text-[10px] text-gray-400 uppercase font-semibold">Operator Verification Remarks</label>
+                <input
+                  type="text"
+                  placeholder="Optional verification remarks..."
+                  className="w-full p-2.5 rounded glass-input text-xs"
+                  value={adminNotes}
+                  onChange={(e) => setAdminNotes(e.target.value)}
+                />
+                <div className="flex gap-3">
+                  <button
+                    onClick={async () => {
+                      await handleWithdrawalAction(supportModalWithdrawal.id, 'COMPLETED');
+                      setSupportModalWithdrawal(null);
+                    }}
+                    className="flex-1 py-2.5 bg-emeraldAccent text-black font-bold text-xs rounded hover:opacity-90 transition cursor-pointer"
+                  >
+                    ✓ Approve & Process
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await handleWithdrawalAction(supportModalWithdrawal.id, 'REJECTED');
+                      setSupportModalWithdrawal(null);
+                    }}
+                    className="flex-1 py-2.5 bg-red-500 text-white font-bold text-xs rounded hover:opacity-90 transition cursor-pointer"
+                  >
+                    ✕ Reject & Refund
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

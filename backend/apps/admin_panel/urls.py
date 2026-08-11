@@ -5,7 +5,7 @@ from .views import (
     AdminDepositViewSet, AdminWithdrawalViewSet, AdminKYCViewSet,
     AdminInvestmentPlanViewSet, AdminWebsiteSettingsViewSet,
     AdminAuditLogViewSet, broadcast_notification, AdminVIPUpgradeViewSet,
-    AdminTransactionViewSet, AdminInvestmentViewSet
+    AdminTransactionViewSet, AdminInvestmentViewSet, manage_platform_settings
 )
 
 router = DefaultRouter()
@@ -26,5 +26,6 @@ urlpatterns = [
     path('auth/login/', admin_login, name='admin_login'),
     path('stats/', AdminDashboardStatsView.as_view(), name='admin_stats'),
     path('notifications/broadcast/', broadcast_notification, name='admin_broadcast'),
+    path('platform-settings/', manage_platform_settings, name='admin_platform_settings'),
     path('', include(router.urls)),
 ]

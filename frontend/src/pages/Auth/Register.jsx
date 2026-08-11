@@ -47,19 +47,21 @@ const Register = () => {
 
   if (registered) {
     return (
-      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-transparent px-4 py-12 sm:px-6 lg:px-8 relative">
+      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-transparent px-4 py-12 sm:px-6 lg:px-8 relative font-jakarta">
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 h-80 w-80 rounded-full bg-emeraldAccent/5 blur-[100px]"></div>
 
-        <div className="w-full max-w-md space-y-8 glass-panel p-8 rounded-xl z-10 border border-slate-205 dark:border-gray-800 shadow-2xl text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emeraldAccent/10 text-emeraldAccent mb-6">
+        <div className="w-full max-w-md space-y-6 glass-panel p-8 rounded-xl z-10 border border-slate-205 dark:border-gray-800 shadow-2xl text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emeraldAccent/10 text-emeraldAccent mb-2">
             <UserPlus size={32} />
           </div>
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Registration Successful!</h2>
-          <p className="text-xs text-gray-400 mt-4 leading-relaxed">
-            A verification link has been sent to <span className="text-cyanAccent font-semibold">{formData.email}</span>. 
-            Please tap the link in the email to activate your account and access your dashboard.
-          </p>
-          <div className="mt-8">
+          
+          <div className="space-y-4 text-xs text-slate-700 dark:text-gray-300 leading-relaxed font-medium">
+            <p className="text-sm font-bold text-emeraldAccent">Your account has been created successfully.</p>
+            <p>Your account is currently pending administrator verification.</p>
+            <p>Please contact the administrator to complete your account verification.</p>
+          </div>
+
+          <div className="mt-8 pt-4 border-t border-slate-200 dark:border-gray-800">
             <Link
               to="/login"
               className="w-full flex items-center justify-center py-3 bg-gradient-to-r from-cyanAccent to-emeraldAccent text-black font-bold text-xs rounded hover:opacity-90 transition shadow shadow-cyanAccent/15"

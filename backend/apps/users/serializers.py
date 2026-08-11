@@ -21,13 +21,13 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'username', 'email', 'phone', 'full_name', 'date_of_birth',
             'address', 'city', 'state', 'country', 'zip_code', 'ssn', 'profile_picture',
-            'is_email_verified', 'is_phone_verified', 'kyc_status', 'kyc_level',
+            'verification_status', 'is_email_verified', 'is_phone_verified', 'kyc_status', 'kyc_level',
             'vip_level', 'vip_level_details', 'referral_code', 'balance', 'profit_balance',
             'is_frozen', 'is_2fa_enabled', 'created_at', 'updated_at',
             'active_investment', 'profit_accrued', 'referral_bonus'
         ]
         read_only_fields = [
-            'id', 'username', 'is_email_verified', 'is_phone_verified',
+            'id', 'username', 'verification_status', 'is_email_verified', 'is_phone_verified',
             'kyc_status', 'kyc_level', 'vip_level', 'referral_code',
             'balance', 'profit_balance', 'is_frozen', 'is_2fa_enabled', 'created_at', 'updated_at'
         ]
@@ -61,7 +61,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'username', 'email', 'phone', 'full_name', 'date_of_birth',
             'address', 'city', 'state', 'country', 'zip_code', 'profile_picture',
-            'is_email_verified', 'is_phone_verified', 'kyc_status', 'kyc_level',
+            'verification_status', 'is_email_verified', 'is_phone_verified', 'kyc_status', 'kyc_level',
             'vip_level', 'vip_level_details', 'referral_code', 'balance', 'profit_balance',
             'is_frozen', 'is_2fa_enabled', 'created_at', 'updated_at',
             'active_investment', 'profit_accrued', 'referral_bonus',
@@ -78,8 +78,14 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         data = super().validate(attrs)
-        if not self.user.is_email_verified and not self.user.is_staff and not self.user.is_superuser:
-            raise serializers.ValidationError({"detail": "Please verify your email address before logging in."})
+        if (self.user.verification_status != 'VERIFIED' and not self.user.is_email_verified) and not self.user.is_staff and not self.user.is_superuser:
+            raise serializers.ValidationError({
+                "detail": (
+                    "Your account has been created successfully.\n\n"
+                    "Your account is currently pending administrator verification.\n\n"
+                    "Please contact the administrator to complete your account verification."
+                )
+            })
         return data
 
 

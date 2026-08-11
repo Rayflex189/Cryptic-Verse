@@ -50,8 +50,15 @@ const Dashboard = () => {
     }
   }, [user?.balance]);
 
+  const [calcFeeInfo, setCalcFeeInfo] = useState(null);
+  const [convertExecuting, setConvertExecuting] = useState(false);
+
   const handleConvertCalculate = async () => {
-    if (!calcAmount || isNaN(parseFloat(calcAmount))) return;
+    if (!calcAmount || isNaN(parseFloat(calcAmount)) || parseFloat(calcAmount) <= 0) {
+      setCalcResult('0.00');
+      setCalcFeeInfo(null);
+      return;
+    }
     setCalcLoading(true);
     try {
       const rates = {
@@ -63,19 +70,40 @@ const Dashboard = () => {
         'EUR': 0.92,
         'GBP': 0.79,
       };
-      const rate = rates[calcCurrency];
+      const rate = rates[calcCurrency] || 1;
       const amount = parseFloat(calcAmount);
+      const feeAmount = amount * 0.01; // 1% fee deduction
+      const netAmount = amount - feeAmount;
       let resVal = 0;
       if (['BTC', 'ETH', 'BNB', 'SOL'].includes(calcCurrency)) {
-        resVal = amount / rate;
+        resVal = netAmount / rate;
       } else {
-        resVal = amount * rate;
+        resVal = netAmount * rate;
       }
       setCalcResult(resVal.toLocaleString(undefined, { maximumFractionDigits: 6 }));
+      setCalcFeeInfo({ fee: feeAmount, net: netAmount });
     } catch (err) {
       console.error(err);
     } finally {
       setCalcLoading(false);
+    }
+  };
+
+  const handleExecuteConvert = async () => {
+    if (!calcAmount || isNaN(parseFloat(calcAmount)) || parseFloat(calcAmount) <= 0) return;
+    setConvertExecuting(true);
+    try {
+      const res = await api.post('convert-balance/', {
+        amount: parseFloat(calcAmount),
+        target_currency: calcCurrency
+      });
+      alert(res.data.message || 'Balance converted successfully!');
+      fetchUserMe();
+      fetchDashboardData();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to convert balance.');
+    } finally {
+      setConvertExecuting(false);
     }
   };
 
@@ -336,9 +364,14 @@ const Dashboard = () => {
       </div>
       {/* Live Balance & Currency Converter */}
       <div className="glass-panel p-6 rounded-xl mb-8">
-        <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-          <Sparkles size={16} className="text-cyanAccent" /> Live Balance & Currency Converter
-        </h3>
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <Sparkles size={16} className="text-cyanAccent" /> Live Balance & Currency Converter
+          </h3>
+          <span className="text-[10px] px-2 py-0.5 rounded bg-emeraldAccent/15 text-emeraldAccent font-bold">
+            1.00% Conversion Fee
+          </span>
+        </div>
         <p className="text-xs text-gray-400 mb-6">Convert any custom amount or your current available balance to other digital assets and fiat currencies instantly using real-time rates.</p>
         
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
@@ -379,19 +412,22 @@ const Dashboard = () => {
           </div>
 
           <div>
-            <label className="block text-[10px] text-gray-400 uppercase font-semibold mb-2">Result Amount</label>
-            <div className="w-full p-2.5 rounded bg-slate-100 dark:bg-gray-900 border border-slate-200 dark:border-gray-800 text-xs font-bold text-slate-800 dark:text-white min-h-[38px] flex items-center">
-              {calcLoading ? 'Converting...' : `${calcResult} ${calcCurrency}`}
+            <label className="block text-[10px] text-gray-400 uppercase font-semibold mb-2">Net Received (After 1% Fee)</label>
+            <div className="w-full p-2.5 rounded bg-slate-100 dark:bg-gray-900 border border-slate-200 dark:border-gray-800 text-xs font-bold text-slate-800 dark:text-white min-h-[38px] flex items-center justify-between">
+              <span>{calcLoading ? 'Calculating...' : `${calcResult} ${calcCurrency}`}</span>
+              {calcFeeInfo && (
+                <span className="text-[9px] text-gray-400 font-normal">Fee: ${calcFeeInfo.fee.toFixed(2)}</span>
+              )}
             </div>
           </div>
 
           <div>
             <button
-              onClick={handleConvertCalculate}
-              disabled={calcLoading || !calcAmount}
-              className="w-full py-2.5 bg-gradient-to-r from-cyanAccent to-emeraldAccent text-black font-bold text-xs rounded hover:opacity-90 transition shadow-sm cursor-pointer"
+              onClick={handleExecuteConvert}
+              disabled={convertExecuting || calcLoading || !calcAmount || parseFloat(calcAmount || 0) <= 0}
+              className="w-full py-2.5 bg-gradient-to-r from-cyanAccent to-emeraldAccent text-black font-bold text-xs rounded hover:opacity-90 transition shadow-sm cursor-pointer disabled:opacity-40"
             >
-              Calculate Exchange
+              {convertExecuting ? 'Converting...' : 'Execute Conversion'}
             </button>
           </div>
         </div>

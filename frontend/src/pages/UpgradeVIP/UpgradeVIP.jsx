@@ -15,11 +15,30 @@ const UpgradeVIP = () => {
   const [successMsg, setSuccessMsg] = useState('');
   const navigate = useNavigate();
 
-  const billingAddress = '0x71C7656EC7ab88b098defB751B7401B5f6d8976F';
+  const [companyWallet, setCompanyWallet] = useState({
+    wallet_name: 'Company Wallet',
+    wallet_address: '0x71C7656EC7ab88b098defB751B7401B5f6d8976F',
+    network: 'ERC20'
+  });
+  const [vipFee, setVipFee] = useState(200);
 
   useEffect(() => {
     fetchUpgradeRequests();
+    fetchCompanyWallet();
   }, []);
+
+  const fetchCompanyWallet = async () => {
+    try {
+      const [walletRes, settingsRes] = await Promise.all([
+        api.get('company-wallet/active/'),
+        api.get('platform-settings/')
+      ]);
+      if (walletRes.data) setCompanyWallet(walletRes.data);
+      if (settingsRes.data?.vip_upgrade_fee) setVipFee(settingsRes.data.vip_upgrade_fee);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const fetchUpgradeRequests = async () => {
     try {
@@ -33,7 +52,7 @@ const UpgradeVIP = () => {
   };
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(billingAddress);
+    navigator.clipboard.writeText(companyWallet.wallet_address);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -140,16 +159,23 @@ const UpgradeVIP = () => {
                 <div className="p-4 rounded-lg bg-slate-100/50 dark:bg-darkCard/30 border border-slate-200 dark:border-gray-800 space-y-4">
                   <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-gray-800">
                     <span className="text-xs text-slate-500 dark:text-gray-400">VIP 2 Subscription Fee:</span>
-                    <span className="text-sm font-bold text-slate-900 dark:text-white">$200.00 USDT</span>
+                    <span className="text-sm font-bold text-slate-900 dark:text-white">${parseFloat(vipFee).toFixed(2)} USDT</span>
                   </div>
 
                   <div>
-                    <label className="block text-[10px] text-slate-500 dark:text-gray-500 uppercase font-semibold mb-2">Company USDT Address (ERC-20)</label>
+                    <div className="flex justify-between items-center mb-2">
+                      <label className="block text-[10px] text-slate-500 dark:text-gray-500 uppercase font-semibold">
+                        {companyWallet.wallet_name || 'Company Wallet Address'} ({companyWallet.network || 'USDT'})
+                      </label>
+                      <span className="text-[9px] px-2 py-0.5 rounded bg-cyanAccent/15 text-cyanAccent font-bold uppercase">
+                        {companyWallet.network}
+                      </span>
+                    </div>
                     <div className="flex gap-2">
                       <input
                         type="text"
                         readOnly
-                        value={billingAddress}
+                        value={companyWallet.wallet_address}
                         className="flex-grow p-3 rounded glass-input text-xs font-mono text-slate-650 dark:text-gray-300"
                       />
                       <button

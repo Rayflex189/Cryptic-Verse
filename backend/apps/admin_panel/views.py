@@ -265,6 +265,32 @@ class AdminUserViewSet(viewsets.ModelViewSet):
         )
         return Response({'status': 'success', 'is_frozen': user.is_frozen, 'message': f"User account has been {'frozen' if user.is_frozen else 'activated'}."})
 
+    @action(detail=True, methods=['post'], url_path='verify')
+    def toggle_verification(self, request, pk=None):
+        user = self.get_object()
+        if user.verification_status == 'VERIFIED' or user.is_email_verified:
+            user.verification_status = 'PENDING'
+            user.is_email_verified = False
+        else:
+            user.verification_status = 'VERIFIED'
+            user.is_email_verified = True
+        user.save(update_fields=['verification_status', 'is_email_verified'])
+
+        AuditLog.objects.create(
+            admin=request.admin_user,
+            user=user,
+            action='VERIFY_TOGGLE',
+            entity_type='User',
+            entity_id=str(user.id),
+            new_values={'verification_status': user.verification_status, 'is_email_verified': user.is_email_verified}
+        )
+        return Response({
+            'status': 'success',
+            'verification_status': user.verification_status,
+            'is_email_verified': user.is_email_verified,
+            'message': f"Account @{user.username} is now {user.verification_status}."
+        })
+
     @action(detail=True, methods=['post'], url_path='balance/add')
     def add_balance(self, request, pk=None):
         user = self.get_object()
@@ -927,5 +953,69 @@ class AdminInvestmentViewSet(viewsets.ModelViewSet):
             'global_enabled': global_val,
             'scheduled_payouts': scheduled
         })
+
+@api_view(['GET', 'POST', 'PUT'])
+@permission_classes([IsAdminUserToken])
+def manage_platform_settings(request):
+    from core.models import PlatformSetting, CompanyWallet
+    settings_obj = PlatformSetting.get_settings()
+    
+    if request.method == 'GET':
+        active_wallet = CompanyWallet.objects.filter(is_active=True).first()
+        return Response({
+            'vip_upgrade_fee': float(settings_obj.vip_upgrade_fee),
+            'company_wallet_address': active_wallet.wallet_address if active_wallet else settings_obj.company_wallet_address,
+            'wallet_network': active_wallet.network if active_wallet else settings_obj.wallet_network,
+            'conversion_fee_pct': float(settings_obj.conversion_fee_pct),
+            'enable_currency_converter': settings_obj.enable_currency_converter,
+            'enable_vip_upgrade': settings_obj.enable_vip_upgrade,
+            'enable_withdrawals': settings_obj.enable_withdrawals
+        })
+    else:
+        vip_fee = request.data.get('vip_upgrade_fee')
+        wallet_address = request.data.get('company_wallet_address')
+        wallet_network = request.data.get('wallet_network', 'ERC20')
+        conversion_fee = request.data.get('conversion_fee_pct')
+        enable_converter = request.data.get('enable_currency_converter')
+        enable_vip = request.data.get('enable_vip_upgrade')
+        enable_wd = request.data.get('enable_withdrawals')
+
+        if vip_fee is not None:
+            settings_obj.vip_upgrade_fee = Decimal(str(vip_fee))
+        if conversion_fee is not None:
+            settings_obj.conversion_fee_pct = Decimal(str(conversion_fee))
+        if enable_converter is not None:
+            settings_obj.enable_currency_converter = bool(enable_converter)
+        if enable_vip is not None:
+            settings_obj.enable_vip_upgrade = bool(enable_vip)
+        if enable_wd is not None:
+            settings_obj.enable_withdrawals = bool(enable_wd)
+
+        if wallet_address:
+            settings_obj.company_wallet_address = wallet_address
+            settings_obj.wallet_network = wallet_network
+            
+            # Sync with CompanyWallet active instance
+            cw, created = CompanyWallet.objects.get_or_create(
+                wallet_name='Company Primary Wallet',
+                defaults={'wallet_address': wallet_address, 'network': wallet_network, 'is_active': True}
+            )
+            cw.wallet_address = wallet_address
+            cw.network = wallet_network
+            cw.is_active = True
+            cw.save()
+
+        settings_obj.save()
+
+        # Record audit log
+        AuditLog.objects.create(
+            admin=request.admin_user,
+            action='UPDATE_SETTINGS',
+            entity_type='PlatformSetting',
+            entity_id=str(settings_obj.id),
+            new_values=request.data
+        )
+
+        return Response({'message': 'Platform settings updated successfully.'})
 
 

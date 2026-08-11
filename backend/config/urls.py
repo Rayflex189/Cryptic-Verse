@@ -4,7 +4,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.views.static import serve
 from django.views.generic import TemplateView
-from core.views import get_market_data, get_public_settings, convert_balance
+from core.views import get_market_data, get_public_settings, convert_balance, get_company_wallet, get_platform_settings
 
 urlpatterns = [
     path('django-admin/', admin.site.urls),
@@ -12,6 +12,8 @@ urlpatterns = [
     path('api/v1/', include([
         path('market-data/', get_market_data, name='market_data'),
         path('website-settings/', get_public_settings, name='public_settings'),
+        path('company-wallet/active/', get_company_wallet, name='active_company_wallet'),
+        path('platform-settings/', get_platform_settings, name='platform_settings'),
         path('convert-balance/', convert_balance, name='convert_balance'),
         
         path('', include('users.urls')),

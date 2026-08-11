@@ -117,7 +117,7 @@ const Login = () => {
         )}
 
         {error && (
-          <div className="rounded-md bg-red-900/30 border border-red-500/50 p-4 text-xs text-red-200">
+          <div className="rounded-md bg-red-900/30 border border-red-500/50 p-4 text-xs text-red-200 whitespace-pre-line leading-relaxed">
             {error}
           </div>
         )}

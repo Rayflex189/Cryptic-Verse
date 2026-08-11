@@ -25,12 +25,13 @@ class UserAuthTests(APITestCase):
         response = self.client.post(url, data, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn('message', response.data)
-        self.assertIn('A verification link has been sent', response.data['message'])
+        self.assertIn('pending administrator verification', response.data['message'])
 
         # Check in DB
         user = User.objects.get(username='testuser')
         self.assertTrue(user.check_password('testpassword123'))
         self.assertEqual(user.email, 'testuser@example.com')
+        self.assertEqual(user.verification_status, 'PENDING')
         self.assertFalse(user.is_email_verified)
 
     def test_user_login(self):
@@ -381,15 +382,14 @@ class EmailVerificationAndDailyProfitTests(APITestCase):
         }
         response = self.client.post(register_url, register_data, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn('A verification link has been sent', response.data['message'])
+        self.assertIn('pending administrator verification', response.data['message'])
 
-        # Verify user is created but is_email_verified is False
+        # Verify user is created with PENDING verification status
         user = User.objects.get(username='verifyuser')
+        self.assertEqual(user.verification_status, 'PENDING')
         self.assertFalse(user.is_email_verified)
-        self.assertEqual(len(mail.outbox), 1)
-        self.assertIn("Verify Your Cryptic Verse Account", mail.outbox[0].subject)
 
-        # Attempt to login (should fail because not verified)
+        # Attempt to login (should fail because pending administrator verification)
         login_url = '/api/v1/auth/login/'
         login_data = {
             'username': 'verifyuser',
@@ -397,19 +397,12 @@ class EmailVerificationAndDailyProfitTests(APITestCase):
         }
         login_response = self.client.post(login_url, login_data, format='json')
         self.assertEqual(login_response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("Please verify your email address", str(login_response.data))
+        self.assertIn("pending administrator verification", str(login_response.data))
 
-        # Perform verification using the view
-        from users.views import generate_verification_token
-        token = generate_verification_token(user)
-        
-        verify_url = '/api/v1/auth/verify-email/'
-        verify_response = self.client.post(verify_url, {'token': token}, format='json')
-        self.assertEqual(verify_response.status_code, status.HTTP_200_OK)
-        
-        # Check user is verified now
-        user.refresh_from_db()
-        self.assertTrue(user.is_email_verified)
+        # Admin verifies account
+        user.verification_status = 'VERIFIED'
+        user.is_email_verified = True
+        user.save()
 
         # Login again (should succeed now)
         login_response = self.client.post(login_url, login_data, format='json')

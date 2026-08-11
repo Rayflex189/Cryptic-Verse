@@ -12,13 +12,24 @@ const Withdraw = () => {
   const [loading, setLoading] = useState(true);
 
   // Form states
-  const [selectedCurrency, setSelectedCurrency] = useState('USDT');
+  const [method, setMethod] = useState('CRYPTO'); // BANK, CRYPTO, PAYPAL
   const [amount, setAmount] = useState('');
-  const [address, setAddress] = useState('');
+  
+  // Bank Transfer Fields
   const [bankName, setBankName] = useState('');
   const [accountName, setAccountName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
-  const [routingNumber, setRoutingNumber] = useState('');
+  const [swiftCode, setSwiftCode] = useState('');
+  const [country, setCountry] = useState('');
+
+  // Cryptocurrency Fields
+  const [cryptoCoin, setCryptoCoin] = useState('USDT');
+  const [cryptoNetwork, setCryptoNetwork] = useState('TRC20');
+  const [walletAddress, setWalletAddress] = useState('');
+
+  // PayPal Fields
+  const [paypalEmail, setPaypalEmail] = useState('');
+
   const [code2fa, setCode2fa] = useState('');
   
   // Multi-step verification state
@@ -58,28 +69,46 @@ const Withdraw = () => {
       return;
     }
 
-    const currentWallet = wallets.find(w => w.currency === (selectedCurrency === 'BANK' ? 'USDT' : selectedCurrency));
+    let targetCurrency = 'USDT';
+    if (method === 'CRYPTO') {
+      targetCurrency = cryptoCoin;
+    }
+
+    const currentWallet = wallets.find(w => w.currency === targetCurrency);
     if (!currentWallet || parseFloat(currentWallet.balance) < parseFloat(amount)) {
-      setErrorMsg(`Insufficient funds. Your available balance is ${currentWallet?.balance || 0} ${selectedCurrency === 'BANK' ? 'USDT' : selectedCurrency}`);
+      setErrorMsg(`Insufficient funds. Your available ${targetCurrency} balance is ${currentWallet?.balance || 0}`);
       return;
+    }
+
+    let details = {};
+    let finalAddress = '';
+
+    if (method === 'BANK') {
+      details = { bank_name: bankName, account_name: accountName, account_number: accountNumber, swift_code: swiftCode, country };
+      finalAddress = `Bank: ${bankName} | Acc: ${accountNumber} (${accountName}) | Country: ${country}`;
+    } else if (method === 'CRYPTO') {
+      details = { crypto_coin: cryptoCoin, crypto_network: cryptoNetwork, wallet_address: walletAddress };
+      finalAddress = `${cryptoCoin} (${cryptoNetwork}): ${walletAddress}`;
+    } else if (method === 'PAYPAL') {
+      details = { paypal_email: paypalEmail };
+      finalAddress = `PayPal: ${paypalEmail}`;
     }
 
     setSubmitting(true);
     try {
-      const finalAddress = selectedCurrency === 'BANK'
-        ? `Bank: ${bankName} | Acc Name: ${accountName} | Acc Num: ${accountNumber} | Routing: ${routingNumber}`
-        : address;
-
       const res = await api.post('withdrawals/', {
         amount,
-        currency: selectedCurrency,
+        currency: targetCurrency,
+        method,
+        details,
         address: finalAddress,
-        code_2fa: code2fa // passed if enabled
+        code_2fa: code2fa
       });
       setCreatedWithdrawal(res.data);
-      setSuccessMsg('Withdrawal request initialized. Please enter the 6-digit confirmation code.');
+      setSuccessMsg(`Withdrawal ${res.data.transaction_code || ''} initialized. Please enter the 6-digit confirmation code.`);
     } catch (err) {
-      setErrorMsg(err.response?.data?.non_field_errors?.[0] || err.response?.data?.error || 'Failed to initialize withdrawal.');
+      const errDetail = err.response?.data?.details || err.response?.data?.amount || err.response?.data?.error || 'Failed to initialize withdrawal.';
+      setErrorMsg(errDetail);
     } finally {
       setSubmitting(false);
     }
@@ -97,13 +126,19 @@ const Withdraw = () => {
       });
       setConfirmCode('');
       setAmount('');
-      setAddress('');
+      setWalletAddress('');
+      setBankName('');
+      setAccountName('');
+      setAccountNumber('');
+      setSwiftCode('');
+      setCountry('');
+      setPaypalEmail('');
       setCode2fa('');
 
       if (!user?.vip_level_details || user.vip_level_details.level === 1) {
         navigate('/upgrade-vip');
       } else {
-        setSuccessMsg('Withdrawal confirmed successfully. It is now awaiting admin approval.');
+        setSuccessMsg(`Withdrawal ${createdWithdrawal.transaction_code} confirmed successfully. Awaiting administrative verification.`);
         setCreatedWithdrawal(null);
         fetchData();
       }
@@ -150,29 +185,53 @@ const Withdraw = () => {
 
           {!createdWithdrawal ? (
             <form onSubmit={handleRequest} className="space-y-6">
+              {/* Withdrawal Method Selection Tabs */}
+              <div>
+                <label className="text-xs font-semibold text-gray-400 block mb-2 uppercase tracking-wider">Select Withdrawal Method</label>
+                <div className="grid grid-cols-3 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setMethod('BANK')}
+                    className={`py-3 px-4 rounded-lg font-bold text-xs border transition text-center cursor-pointer ${
+                      method === 'BANK'
+                        ? 'bg-cyanAccent/15 border-cyanAccent text-cyanAccent shadow shadow-cyanAccent/10'
+                        : 'border-slate-200 dark:border-gray-800 text-slate-700 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-gray-800/40'
+                    }`}
+                  >
+                    Bank Transfer
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setMethod('CRYPTO')}
+                    className={`py-3 px-4 rounded-lg font-bold text-xs border transition text-center cursor-pointer ${
+                      method === 'CRYPTO'
+                        ? 'bg-cyanAccent/15 border-cyanAccent text-cyanAccent shadow shadow-cyanAccent/10'
+                        : 'border-slate-200 dark:border-gray-800 text-slate-700 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-gray-800/40'
+                    }`}
+                  >
+                    Cryptocurrency
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setMethod('PAYPAL')}
+                    className={`py-3 px-4 rounded-lg font-bold text-xs border transition text-center cursor-pointer ${
+                      method === 'PAYPAL'
+                        ? 'bg-cyanAccent/15 border-cyanAccent text-cyanAccent shadow shadow-cyanAccent/10'
+                        : 'border-slate-200 dark:border-gray-800 text-slate-700 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-gray-800/40'
+                    }`}
+                  >
+                    PayPal
+                  </button>
+                </div>
+              </div>
+
+              {/* Amount & Asset Row */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
-                  <label className="text-xs font-semibold text-gray-400 block mb-2">Select Asset</label>
-                  <select
-                    value={selectedCurrency}
-                    onChange={(e) => setSelectedCurrency(e.target.value)}
-                    className="w-full rounded p-3 text-xs glass-input"
-                  >
-                    <option value="USDT">USDT (ERC-20)</option>
-                    <option value="BTC">Bitcoin (BTC)</option>
-                    <option value="ETH">Ethereum (ETH)</option>
-                    <option value="BNB">Binance Coin (BNB)</option>
-                    <option value="SOL">Solana (SOL)</option>
-                    <option value="BANK">Bank Transfer (USD)</option>
-                  </select>
-                  <span className="text-[10px] text-gray-500 mt-1 block">
-                    Available: {parseFloat(selectedWallet?.balance || 0).toFixed(6)} {selectedCurrency === 'BANK' ? 'USDT' : selectedCurrency}
-                  </span>
-                </div>
-
-                <div>
                   <label htmlFor="amount" className="text-xs font-semibold text-gray-400 block mb-2">
-                    Withdrawal Amount
+                    Withdrawal Amount ($)
                   </label>
                   <input
                     id="amount"
@@ -185,11 +244,29 @@ const Withdraw = () => {
                     placeholder="100.00"
                   />
                 </div>
+
+                {method === 'CRYPTO' && (
+                  <div>
+                    <label className="text-xs font-semibold text-gray-400 block mb-2">Select Crypto Asset</label>
+                    <select
+                      value={cryptoCoin}
+                      onChange={(e) => setCryptoCoin(e.target.value)}
+                      className="w-full rounded p-3 text-xs glass-input cursor-pointer font-bold"
+                    >
+                      <option value="USDT">USDT (Tether)</option>
+                      <option value="BTC">Bitcoin (BTC)</option>
+                      <option value="ETH">Ethereum (ETH)</option>
+                      <option value="BNB">Binance Coin (BNB)</option>
+                      <option value="SOL">Solana (SOL)</option>
+                    </select>
+                  </div>
+                )}
               </div>
 
-              {selectedCurrency === 'BANK' ? (
-                <div className="space-y-4 border border-slate-200 dark:border-gray-800 rounded-lg p-4 bg-slate-100/10">
-                  <h3 className="text-xs font-bold text-slate-900 dark:text-white mb-2">Bank Transfer Payout Details</h3>
+              {/* Method 1: BANK TRANSFER FIELDS */}
+              {method === 'BANK' && (
+                <div className="space-y-4 border border-slate-200 dark:border-gray-800 rounded-lg p-5 bg-slate-100/30 dark:bg-gray-950/20">
+                  <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2">Bank Transfer Details</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="text-[10px] font-semibold text-gray-400 block mb-1">Bank Name</label>
@@ -199,11 +276,12 @@ const Withdraw = () => {
                         value={bankName}
                         onChange={(e) => setBankName(e.target.value)}
                         className="w-full rounded p-3 text-xs glass-input"
-                        placeholder="Chase Bank, Wells Fargo, etc."
+                        placeholder="Chase Bank, Citibank, etc."
                       />
                     </div>
+
                     <div>
-                      <label className="text-[10px] font-semibold text-gray-400 block mb-1">Account Holder Name</label>
+                      <label className="text-[10px] font-semibold text-gray-400 block mb-1">Account Name</label>
                       <input
                         type="text"
                         required
@@ -213,8 +291,9 @@ const Withdraw = () => {
                         placeholder="John Doe"
                       />
                     </div>
+
                     <div>
-                      <label className="text-[10px] font-semibold text-gray-400 block mb-1">Account Number / IBAN</label>
+                      <label className="text-[10px] font-semibold text-gray-400 block mb-1">Account Number</label>
                       <input
                         type="text"
                         required
@@ -224,33 +303,82 @@ const Withdraw = () => {
                         placeholder="1234567890"
                       />
                     </div>
+
                     <div>
-                      <label className="text-[10px] font-semibold text-gray-400 block mb-1">Routing Number / Sort Code</label>
+                      <label className="text-[10px] font-semibold text-gray-400 block mb-1">Swift Code (Optional)</label>
+                      <input
+                        type="text"
+                        value={swiftCode}
+                        onChange={(e) => setSwiftCode(e.target.value)}
+                        className="w-full rounded p-3 text-xs glass-input font-mono"
+                        placeholder="CHASUS33"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="text-[10px] font-semibold text-gray-400 block mb-1">Country</label>
                       <input
                         type="text"
                         required
-                        value={routingNumber}
-                        onChange={(e) => setRoutingNumber(e.target.value)}
-                        className="w-full rounded p-3 text-xs glass-input font-mono"
-                        placeholder="987654321"
+                        value={country}
+                        onChange={(e) => setCountry(e.target.value)}
+                        className="w-full rounded p-3 text-xs glass-input"
+                        placeholder="United States, United Kingdom, etc."
                       />
                     </div>
                   </div>
                 </div>
-              ) : (
-                <div>
-                  <label htmlFor="address" className="text-xs font-semibold text-gray-400 block mb-2">
-                    Destination Blockchain Address ({selectedCurrency})
-                  </label>
-                  <input
-                    id="address"
-                    type="text"
-                    required
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    className="w-full rounded p-3 text-xs glass-input font-mono"
-                    placeholder="Enter external destination address"
-                  />
+              )}
+
+              {/* Method 2: CRYPTOCURRENCY FIELDS */}
+              {method === 'CRYPTO' && (
+                <div className="space-y-4 border border-slate-200 dark:border-gray-800 rounded-lg p-5 bg-slate-100/30 dark:bg-gray-950/20">
+                  <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2">Cryptocurrency Wallet Details</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-semibold text-gray-400 block mb-1">Network</label>
+                      <select
+                        value={cryptoNetwork}
+                        onChange={(e) => setCryptoNetwork(e.target.value)}
+                        className="w-full rounded p-3 text-xs glass-input cursor-pointer font-bold"
+                      >
+                        <option value="TRC20">TRC20 (Tron)</option>
+                        <option value="ERC20">ERC20 (Ethereum)</option>
+                        <option value="BEP20">BEP20 (Binance Smart Chain)</option>
+                        <option value="Native">Native Blockchain</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-semibold text-gray-400 block mb-1">Wallet Address</label>
+                      <input
+                        type="text"
+                        required
+                        value={walletAddress}
+                        onChange={(e) => setWalletAddress(e.target.value)}
+                        className="w-full rounded p-3 text-xs glass-input font-mono"
+                        placeholder="Enter destination wallet address"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Method 3: PAYPAL FIELDS */}
+              {method === 'PAYPAL' && (
+                <div className="space-y-4 border border-slate-200 dark:border-gray-800 rounded-lg p-5 bg-slate-100/30 dark:bg-gray-950/20">
+                  <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2">PayPal Payout Details</h3>
+                  <div>
+                    <label className="text-[10px] font-semibold text-gray-400 block mb-1">PayPal Email Address</label>
+                    <input
+                      type="email"
+                      required
+                      value={paypalEmail}
+                      onChange={(e) => setPaypalEmail(e.target.value)}
+                      className="w-full rounded p-3 text-xs glass-input"
+                      placeholder="user@paypal.com"
+                    />
+                  </div>
                 </div>
               )}
 
@@ -275,16 +403,16 @@ const Withdraw = () => {
               <button
                 type="submit"
                 disabled={submitting}
-                className="rounded bg-gradient-to-r from-cyanAccent to-emeraldAccent px-6 py-3 text-xs font-bold text-black hover:opacity-90 transition disabled:opacity-50"
+                className="rounded bg-gradient-to-r from-cyanAccent to-emeraldAccent px-6 py-3 text-xs font-bold text-black hover:opacity-90 transition disabled:opacity-50 cursor-pointer"
               >
-                {submitting ? 'Initializing...' : 'Request Withdrawal'}
+                {submitting ? 'Initializing Request...' : 'Submit Withdrawal Request'}
               </button>
             </form>
           ) : (
             <form onSubmit={handleConfirm} className="space-y-6 max-w-sm">
               <div>
                 <label htmlFor="confirmCode" className="text-xs font-semibold text-gray-400 block mb-2">
-                  Enter 6-Digit Email/SMS Confirmation Code (Mock value sent)
+                  Enter 6-Digit Email/SMS Confirmation Code
                 </label>
                 <input
                   id="confirmCode"
@@ -305,14 +433,14 @@ const Withdraw = () => {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="rounded bg-cyanAccent px-6 py-2.5 text-xs font-bold text-black hover:opacity-90 transition disabled:opacity-50"
+                  className="rounded bg-cyanAccent px-6 py-2.5 text-xs font-bold text-black hover:opacity-90 transition disabled:opacity-50 cursor-pointer"
                 >
                   {submitting ? 'Confirming...' : 'Confirm Withdrawal'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setCreatedWithdrawal(null)}
-                  className="rounded border border-slate-300 dark:border-gray-700 px-6 py-2.5 text-xs font-bold text-slate-700 dark:text-white hover:bg-slate-100 dark:hover:bg-gray-800 transition"
+                  className="rounded border border-slate-300 dark:border-gray-700 px-6 py-2.5 text-xs font-bold text-slate-700 dark:text-white hover:bg-slate-100 dark:hover:bg-gray-800 transition cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -359,10 +487,10 @@ const Withdraw = () => {
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-slate-200 dark:border-gray-850 text-slate-500 dark:text-gray-400 font-semibold uppercase tracking-wider">
-                  <th className="pb-3">ID</th>
+                  <th className="pb-3">Code / ID</th>
                   <th className="pb-3">Amount</th>
-                  <th className="pb-3">Currency</th>
-                  <th className="pb-3">Destination Address</th>
+                  <th className="pb-3">Method</th>
+                  <th className="pb-3">Destination Details</th>
                   <th className="pb-3">Date</th>
                   <th className="pb-3">Status</th>
                   <th className="pb-3">Notes</th>
@@ -371,10 +499,10 @@ const Withdraw = () => {
               <tbody className="divide-y divide-slate-150 dark:divide-gray-800/40 text-slate-700 dark:text-gray-300">
                 {withdrawHistory.map((w) => (
                   <tr key={w.id} className="hover:bg-slate-100/50 dark:hover:bg-gray-800/10">
-                    <td className="py-3 text-gray-500 font-mono">WD-{w.id}</td>
+                    <td className="py-3 font-mono font-bold text-cyanAccent">{w.transaction_code || `WD-${w.id}`}</td>
                     <td className="py-3 font-semibold text-red-400">-${parseFloat(w.amount).toFixed(2)}</td>
-                    <td className="py-3">{w.currency}</td>
-                    <td className="py-3 text-gray-450 font-mono truncate max-w-[120px]">{w.address}</td>
+                    <td className="py-3 font-bold uppercase">{w.method || 'CRYPTO'}</td>
+                    <td className="py-3 text-gray-450 font-mono truncate max-w-[180px]">{w.address}</td>
                     <td className="py-3 text-gray-500">{new Date(w.created_at).toLocaleDateString()}</td>
                     <td className="py-3">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
