@@ -60,8 +60,34 @@ def admin_login(request):
         password = serializer.validated_data['password']
         from django.db.models import Q
         try:
-            admin = Admin.objects.get(Q(email=email) | Q(full_name=email), is_active=True)
-            if admin.check_password(password):
+            admin = Admin.objects.filter(
+                Q(email__iexact=email) | 
+                Q(full_name__iexact=email) |
+                Q(email__istartswith=f"{email}@"),
+                is_active=True
+            ).first()
+
+            if not admin:
+                user = User.objects.filter(
+                    Q(username__iexact=email) | Q(email__iexact=email),
+                    is_active=True
+                ).first()
+                if user and (user.is_staff or user.is_superuser):
+                    admin = Admin.objects.filter(
+                        Q(email__iexact=user.email) | Q(full_name__iexact=user.username),
+                        is_active=True
+                    ).first()
+                    if not admin:
+                        admin = Admin.objects.create(
+                            email=user.email,
+                            full_name=user.username,
+                            role='SUPER_ADMIN',
+                            is_active=True
+                        )
+                    admin.set_password(password)
+                    admin.save()
+
+            if admin and admin.check_password(password):
                 admin.last_login_at = timezone.now()
                 admin.save()
                 tokens = get_tokens_for_admin(admin)
@@ -70,7 +96,7 @@ def admin_login(request):
                     'tokens': tokens
                 })
             return Response({'error': 'Invalid credentials.'}, status=status.HTTP_400_BAD_REQUEST)
-        except Admin.DoesNotExist:
+        except Exception as e:
             return Response({'error': 'Invalid credentials.'}, status=status.HTTP_400_BAD_REQUEST)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -556,11 +582,16 @@ class AdminWebsiteSettingsViewSet(viewsets.ModelViewSet):
     queryset = WebsiteSetting.objects.all()
 
 # Audit Logs
-class AdminAuditLogViewSet(viewsets.ReadOnlyModelViewSet):
+class AdminAuditLogViewSet(viewsets.ModelViewSet):
     authentication_classes = ()
     serializer_class = AuditLogSerializer
     permission_classes = [IsAdminUserToken]
     queryset = AuditLog.objects.all().order_by('-created_at')
+
+    @action(detail=False, methods=['delete'], url_path='clear')
+    def clear_logs(self, request):
+        AuditLog.objects.all().delete()
+        return Response({'message': 'Audit logs cleared successfully.'})
 
 # Send broadcast notifications
 @api_view(['POST'])

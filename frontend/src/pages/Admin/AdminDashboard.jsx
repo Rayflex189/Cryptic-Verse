@@ -213,6 +213,27 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleClearAuditLogs = async () => {
+    if (!window.confirm('Are you sure you want to clear all staff audit logs?')) return;
+    try {
+      await api.delete('admin/audit-logs/clear/');
+      setSuccess('Audit logs cleared successfully.');
+      setAuditLogs([]);
+    } catch (err) {
+      setError('Failed to clear audit logs.');
+    }
+  };
+
+  const handleDeleteAuditLog = async (logId) => {
+    try {
+      await api.delete(`admin/audit-logs/${logId}/`);
+      setAuditLogs(prev => prev.filter(l => l.id !== logId));
+      setSuccess(`Audit log #${logId} deleted.`);
+    } catch (err) {
+      setError('Failed to delete audit log entry.');
+    }
+  };
+
   const handleCreateOrUpdateInvestment = async (e) => {
     e.preventDefault();
     if (!invUser || !invPlan || !invAmount) {
@@ -1237,33 +1258,59 @@ const AdminDashboard = () => {
         {/* TAB 7: AUDIT LOGS */}
         {activeTab === 'logs' && (
           <div className="glass-panel rounded-xl p-6">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-6">Staff Audit Trail Logs</h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-slate-200 dark:border-gray-850 text-slate-500 dark:text-gray-400 font-semibold uppercase tracking-wider">
-                    <th className="pb-3">Action</th>
-                    <th className="pb-3">Operator</th>
-                    <th className="pb-3">Impacted User</th>
-                    <th className="pb-3">Entity Type</th>
-                    <th className="pb-3">Values Context</th>
-                    <th className="pb-3">Timestamp</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-150 dark:divide-gray-850 text-slate-700 dark:text-gray-300">
-                  {auditLogs.map((log) => (
-                    <tr key={log.id} className="hover:bg-slate-100/50 dark:hover:bg-gray-900/10">
-                      <td className="py-3 font-semibold text-slate-900 dark:text-white">{log.action}</td>
-                      <td className="py-3">{log.admin_name}</td>
-                      <td className="py-3">@{log.user_name || 'System'}</td>
-                      <td className="py-3">{log.entity_type} (ID: {log.entity_id})</td>
-                      <td className="py-3 max-w-[200px] truncate font-mono text-[10px]">{JSON.stringify(log.new_values)}</td>
-                      <td className="py-3 text-slate-400 dark:text-gray-500">{new Date(log.created_at).toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Staff Audit Trail Logs</h3>
+              {auditLogs.length > 0 && (
+                <button
+                  onClick={handleClearAuditLogs}
+                  className="px-3 py-1.5 bg-red-500/15 border border-red-500/30 text-red-400 font-bold text-xs rounded hover:bg-red-500 hover:text-white transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Trash2 size={13} /> Clear All Logs
+                </button>
+              )}
             </div>
+            {auditLogs.length === 0 ? (
+              <div className="text-center py-8 text-xs text-slate-400">
+                Audit log trail is empty.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-gray-850 text-slate-500 dark:text-gray-400 font-semibold uppercase tracking-wider">
+                      <th className="pb-3">Action</th>
+                      <th className="pb-3">Operator</th>
+                      <th className="pb-3">Impacted User</th>
+                      <th className="pb-3">Entity Type</th>
+                      <th className="pb-3">Values Context</th>
+                      <th className="pb-3">Timestamp</th>
+                      <th className="pb-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-150 dark:divide-gray-850 text-slate-700 dark:text-gray-300">
+                    {auditLogs.map((log) => (
+                      <tr key={log.id} className="hover:bg-slate-100/50 dark:hover:bg-gray-900/10">
+                        <td className="py-3 font-semibold text-slate-900 dark:text-white">{log.action}</td>
+                        <td className="py-3 font-medium text-cyanAccent">{log.admin_name || 'System'}</td>
+                        <td className="py-3">@{log.user_name || 'System'}</td>
+                        <td className="py-3">{log.entity_type} (ID: {log.entity_id})</td>
+                        <td className="py-3 max-w-[200px] truncate font-mono text-[10px]">{JSON.stringify(log.new_values)}</td>
+                        <td className="py-3 text-slate-400 dark:text-gray-500">{new Date(log.created_at).toLocaleString()}</td>
+                        <td className="py-3 text-right">
+                          <button
+                            onClick={() => handleDeleteAuditLog(log.id)}
+                            className="p-1 text-slate-400 hover:text-red-400 transition cursor-pointer"
+                            title="Delete Log Entry"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
