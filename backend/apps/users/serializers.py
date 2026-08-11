@@ -85,11 +85,28 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
+    phone = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     referral_code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = User
         fields = ['username', 'email', 'password', 'full_name', 'phone', 'referral_code']
+
+    def validate_phone(self, value):
+        if value is not None:
+            value = value.strip()
+            if not value:
+                return None
+            if User.objects.filter(phone=value).exists():
+                raise serializers.ValidationError("A user with this phone number already exists.")
+        return value
+
+    def validate_referral_code(self, value):
+        if value is not None:
+            value = value.strip()
+            if not value:
+                return None
+        return value
 
     def create(self, validated_data):
         referral_code = validated_data.pop('referral_code', None)

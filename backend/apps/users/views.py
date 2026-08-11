@@ -77,6 +77,7 @@ def register_user(request):
         user.is_email_verified = False
         user.save(update_fields=['is_email_verified'])
         
+        token = None
         try:
             token = generate_verification_token(user)
             send_verification_email(user, token)
@@ -84,7 +85,8 @@ def register_user(request):
             print("Failed to send email:", str(e))
             
         return Response({
-            'message': 'Registration successful! A verification link has been sent to your email. Please verify your email to log in.'
+            'message': 'Registration successful! A verification link has been sent to your email. Please verify your email to log in.',
+            'verification_token': token
         }, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
