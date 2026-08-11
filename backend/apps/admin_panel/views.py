@@ -27,6 +27,9 @@ from investments.serializers import InvestmentPlanSerializer, AdminInvestmentSer
 from notifications.models import Notification
 from transactions.models import Transaction
 from transactions.serializers import TransactionSerializer
+from support.models import SupportTicket, TicketMessage
+from support.serializers import SupportTicketSerializer, TicketMessageSerializer
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 
 User = get_user_model()
@@ -1017,5 +1020,74 @@ def manage_platform_settings(request):
         )
 
         return Response({'message': 'Platform settings updated successfully.'})
+
+
+class AdminSupportTicketViewSet(viewsets.ModelViewSet):
+    authentication_classes = ()
+    serializer_class = SupportTicketSerializer
+    permission_classes = [IsAdminUserToken]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    queryset = SupportTicket.objects.all().order_by('-updated_at')
+
+    def get_queryset(self):
+        qs = SupportTicket.objects.all().order_by('-updated_at')
+        status_filter = self.request.query_params.get('status')
+        search_query = self.request.query_params.get('search')
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        if search_query:
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(subject__icontains=search_query) |
+                Q(user__username__icontains=search_query) |
+                Q(user__email__icontains=search_query) |
+                Q(user__full_name__icontains=search_query)
+            )
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='reply')
+    def admin_reply(self, request, pk=None):
+        ticket = self.get_object()
+        serializer = TicketMessageSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            admin_user = getattr(request, 'admin_user', None)
+            sender = getattr(admin_user, 'user', None) if admin_user else None
+            if not sender or not getattr(sender, 'is_authenticated', False):
+                sender = User.objects.filter(is_superuser=True).first() or ticket.user
+            
+            message_obj = serializer.save(
+                ticket=ticket,
+                sender=sender,
+                is_admin=True
+            )
+            
+            new_status = request.data.get('status', 'IN_PROGRESS')
+            if new_status in ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED']:
+                ticket.status = new_status
+            ticket.save()
+
+            AuditLog.objects.create(
+                admin=request.admin_user if hasattr(request, 'admin_user') else None,
+                user=ticket.user,
+                action='SUPPORT_REPLY',
+                entity_type='SupportTicket',
+                entity_id=str(ticket.id),
+                new_values={'message_id': message_obj.id, 'status': ticket.status}
+            )
+
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['patch'], url_path='status')
+    def update_status(self, request, pk=None):
+        ticket = self.get_object()
+        new_status = request.data.get('status')
+        if new_status in ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED']:
+            ticket.status = new_status
+            if new_status in ['RESOLVED', 'CLOSED']:
+                ticket.resolved_at = timezone.now()
+            ticket.save()
+            return Response({'status': 'success', 'ticket_status': ticket.status, 'message': f"Ticket #{ticket.id} status updated to {new_status}."})
+        return Response({'error': 'Invalid status provided.'}, status=status.HTTP_400_BAD_REQUEST)
 
 

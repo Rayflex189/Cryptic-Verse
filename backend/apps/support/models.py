@@ -5,6 +5,7 @@ class SupportTicket(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='tickets')
     subject = models.CharField(max_length=200)
     message = models.TextField()
+    initial_attachment = models.FileField(upload_to='support_attachments/', null=True, blank=True)
     status = models.CharField(
         max_length=20,
         choices=[('OPEN', 'Open'), ('IN_PROGRESS', 'In Progress'), ('RESOLVED', 'Resolved'), ('CLOSED', 'Closed')],
@@ -26,7 +27,8 @@ class SupportTicket(models.Model):
 class TicketMessage(models.Model):
     ticket = models.ForeignKey(SupportTicket, on_delete=models.CASCADE, related_name='messages')
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    message = models.TextField()
+    message = models.TextField(blank=True, default='')
+    attachment = models.FileField(upload_to='support_attachments/', null=True, blank=True)
     is_admin = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 

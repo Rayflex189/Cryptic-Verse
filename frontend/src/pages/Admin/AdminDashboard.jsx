@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useTheme } from '../../hooks/useTheme';
 import api from '../../api/api';
-import { Shield, Users, ArrowUpCircle, ArrowDownCircle, FileCheck, Megaphone, History, UserMinus, UserCheck, Plus, Minus, Eye, Settings, LogOut, Check, X, ShieldAlert, Award, Sun, Moon, Receipt, Trash2, Layers } from 'lucide-react';
+import { Shield, Users, ArrowUpCircle, ArrowDownCircle, FileCheck, Megaphone, History, UserMinus, UserCheck, Plus, Minus, Eye, Settings, LogOut, Check, X, ShieldAlert, Award, Sun, Moon, Receipt, Trash2, Layers, LifeBuoy, MessageSquare, Image as ImageIcon, Maximize2 } from 'lucide-react';
 
 const AdminDashboard = () => {
   const { adminUser, adminLogout } = useAuth();
@@ -110,6 +110,22 @@ const AdminDashboard = () => {
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userStatusFilter, setUserStatusFilter] = useState('ALL'); // ALL, PENDING, VERIFIED
 
+  // Support Tickets Admin State
+  const [adminTickets, setAdminTickets] = useState([]);
+  const [selectedAdminTicket, setSelectedAdminTicket] = useState(null);
+  const [adminTicketDetails, setAdminTicketDetails] = useState(null);
+  const [adminReplyMessage, setAdminReplyMessage] = useState('');
+  const [adminReplyFile, setAdminReplyFile] = useState(null);
+  const [adminReplyFilePreview, setAdminReplyFilePreview] = useState(null);
+  const [adminReplyStatus, setAdminReplyStatus] = useState('IN_PROGRESS');
+  const [adminReplyLoading, setAdminReplyLoading] = useState(false);
+  const [adminSupportSearch, setAdminSupportSearch] = useState('');
+  const [adminSupportStatusFilter, setAdminSupportStatusFilter] = useState('ALL');
+  const [adminLightboxImage, setAdminLightboxImage] = useState(null);
+
+  const adminReplyFileInputRef = React.useRef(null);
+  const adminChatEndRef = React.useRef(null);
+
   const handleToggleVerification = async (userId) => {
     try {
       const res = await api.post(`admin/users/${userId}/verify/`);
@@ -117,6 +133,134 @@ const AdminDashboard = () => {
       fetchUsers();
     } catch (err) {
       setError('Could not update account verification status.');
+    }
+  };
+
+  const fetchAdminSupportTickets = async () => {
+    try {
+      const res = await api.get('admin/support/tickets/');
+      setAdminTickets(res.data);
+      if (res.data.length > 0 && !selectedAdminTicket) {
+        setSelectedAdminTicket(res.data[0]);
+        setAdminReplyStatus(res.data[0].status);
+      }
+    } catch (err) {
+      console.error('Failed to fetch admin support tickets:', err);
+    }
+  };
+
+  const fetchAdminTicketDetails = async (id, isSilent = false) => {
+    try {
+      const res = await api.get(`admin/support/tickets/${id}/`);
+      setAdminTicketDetails(res.data);
+      if (res.data && res.data.status) {
+        setAdminReplyStatus(res.data.status);
+      }
+    } catch (err) {
+      if (!isSilent) {
+        setError('Failed to fetch support ticket conversation.');
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'support') {
+      fetchAdminSupportTickets();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (selectedAdminTicket && activeTab === 'support') {
+      fetchAdminTicketDetails(selectedAdminTicket.id);
+      const interval = setInterval(() => {
+        fetchAdminTicketDetails(selectedAdminTicket.id, true);
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [selectedAdminTicket, activeTab]);
+
+  useEffect(() => {
+    adminChatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [adminTicketDetails]);
+
+  const handleSelectAdminReplyFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowed.includes(file.type)) {
+      setError('Invalid file format. Please attach JPG, PNG, WEBP, or GIF.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError('Attached image exceeds maximum size of 10 MB.');
+      return;
+    }
+    setError('');
+    setAdminReplyFile(file);
+    setAdminReplyFilePreview(URL.createObjectURL(file));
+  };
+
+  const handleRemoveAdminReplyFile = () => {
+    setAdminReplyFile(null);
+    if (adminReplyFilePreview) {
+      URL.revokeObjectURL(adminReplyFilePreview);
+      setAdminReplyFilePreview(null);
+    }
+    if (adminReplyFileInputRef.current) {
+      adminReplyFileInputRef.current.value = '';
+    }
+  };
+
+  const handleAdminSendReply = async (e) => {
+    e.preventDefault();
+    if (!adminReplyMessage.trim() && !adminReplyFile) return;
+
+    setAdminReplyLoading(true);
+    setError('');
+    try {
+      const formData = new FormData();
+      if (adminReplyMessage.trim()) {
+        formData.append('message', adminReplyMessage.trim());
+      }
+      if (adminReplyFile) {
+        formData.append('attachment', adminReplyFile);
+      }
+      formData.append('status', adminReplyStatus);
+
+      const res = await api.post(`admin/support/tickets/${selectedAdminTicket.id}/reply/`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      if (adminTicketDetails) {
+        setAdminTicketDetails({
+          ...adminTicketDetails,
+          messages: [...(adminTicketDetails.messages || []), res.data],
+          status: adminReplyStatus
+        });
+      }
+      setAdminReplyMessage('');
+      handleRemoveAdminReplyFile();
+      fetchAdminSupportTickets();
+    } catch (err) {
+      setError(err.response?.data?.detail || err.response?.data?.attachment?.[0] || 'Failed to send admin reply.');
+    } finally {
+      setAdminReplyLoading(false);
+    }
+  };
+
+  const handleAdminUpdateStatus = async (newStatus) => {
+    try {
+      const res = await api.patch(`admin/support/tickets/${selectedAdminTicket.id}/status/`, {
+        status: newStatus
+      });
+      setSuccess(res.data.message);
+      setAdminReplyStatus(newStatus);
+      fetchAdminSupportTickets();
+      if (adminTicketDetails) {
+        setAdminTicketDetails({ ...adminTicketDetails, status: newStatus });
+      }
+    } catch (err) {
+      setError('Failed to update ticket status.');
     }
   };
 
@@ -972,6 +1116,14 @@ const AdminDashboard = () => {
           }`}
         >
           <Settings size={16} /> Platform Settings
+        </button>
+        <button
+          onClick={() => setActiveTab('support')}
+          className={`pb-3 px-4 text-xs font-bold transition flex items-center gap-2 border-b-2 ${
+            activeTab === 'support' ? 'border-red-500 text-red-400' : 'border-transparent text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <LifeBuoy size={16} /> Support Operations
         </button>
       </div>
 
@@ -2389,6 +2541,235 @@ const AdminDashboard = () => {
           </div>
         )}
 
+        {/* TAB: SUPPORT OPERATIONS */}
+        {activeTab === 'support' && (
+          <div className="glass-panel rounded-xl p-6 overflow-hidden text-left font-sans">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <LifeBuoy className="text-cyanAccent" size={18} /> Support Ticket Operations & Live Chat
+                </h3>
+                <p className="text-xs text-gray-400">Review user tickets, exchange image attachments, and reply directly to user threads.</p>
+              </div>
+
+              {/* Status Filters & Search */}
+              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                <div className="flex bg-slate-100 dark:bg-gray-900 p-1 rounded-lg border border-slate-200 dark:border-gray-800 text-[11px]">
+                  {['ALL', 'OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'].map((st) => (
+                    <button
+                      key={st}
+                      onClick={() => setAdminSupportStatusFilter(st)}
+                      className={`px-3 py-1 rounded font-bold transition cursor-pointer ${
+                        adminSupportStatusFilter === st ? 'bg-cyanAccent text-black shadow-sm' : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      {st.replace('_', ' ')}
+                    </button>
+                  ))}
+                </div>
+
+                <input
+                  type="text"
+                  placeholder="Search ticket, user..."
+                  value={adminSupportSearch}
+                  onChange={(e) => setAdminSupportSearch(e.target.value)}
+                  className="px-3 py-1.5 rounded glass-input text-xs font-medium w-full sm:w-64"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-[550px]">
+              {/* Ticket List */}
+              <div className="border border-slate-200 dark:border-gray-800 rounded-xl overflow-hidden flex flex-col max-h-[600px] bg-slate-50/50 dark:bg-gray-950/20">
+                <div className="p-3 border-b border-slate-200 dark:border-gray-800 font-bold text-xs text-slate-900 dark:text-white uppercase tracking-wider flex justify-between items-center">
+                  <span>Support Tickets</span>
+                  <span className="text-[10px] bg-cyanAccent/20 text-cyanAccent px-2 py-0.5 rounded font-mono font-bold">{adminTickets.length}</span>
+                </div>
+
+                <div className="overflow-y-auto divide-y divide-slate-150 dark:divide-gray-850 flex-1">
+                  {adminTickets
+                    .filter((t) => {
+                      const matchesStatus = adminSupportStatusFilter === 'ALL' || t.status === adminSupportStatusFilter;
+                      const matchesSearch = !adminSupportSearch ||
+                        t.subject?.toLowerCase().includes(adminSupportSearch.toLowerCase()) ||
+                        t.user_username?.toLowerCase().includes(adminSupportSearch.toLowerCase()) ||
+                        t.user_full_name?.toLowerCase().includes(adminSupportSearch.toLowerCase());
+                      return matchesStatus && matchesSearch;
+                    })
+                    .map((t) => (
+                      <div
+                        key={t.id}
+                        onClick={() => setSelectedAdminTicket(t)}
+                        className={`p-3.5 cursor-pointer text-left transition ${
+                          selectedAdminTicket?.id === t.id ? 'bg-cyanAccent/10 border-l-4 border-cyanAccent' : 'hover:bg-slate-100/30 dark:hover:bg-gray-900/30'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-[140px]">#{t.id} {t.subject}</span>
+                          <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded ${
+                            t.status === 'RESOLVED' ? 'bg-emeraldAccent/15 text-emeraldAccent' :
+                            t.status === 'CLOSED' ? 'bg-gray-800 text-gray-400' :
+                            t.status === 'IN_PROGRESS' ? 'bg-cyanAccent/15 text-cyanAccent' : 'bg-yellow-500/15 text-yellow-500'
+                          }`}>
+                            {t.status}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 dark:text-gray-400 mb-1">User: <span className="font-semibold text-slate-800 dark:text-gray-200">@{t.user_username}</span> ({t.user_full_name})</p>
+                        <div className="flex items-center justify-between text-[9px] text-gray-500">
+                          <span className="font-mono text-cyanAccent font-bold">{t.priority}</span>
+                          <span>{new Date(t.updated_at).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+
+              {/* Chat Window */}
+              <div className="lg:col-span-2 border border-slate-200 dark:border-gray-800 rounded-xl overflow-hidden flex flex-col max-h-[600px] bg-slate-50/20 dark:bg-gray-950/10">
+                {selectedAdminTicket ? (
+                  <>
+                    {/* Header */}
+                    <div className="p-4 border-b border-slate-200 dark:border-gray-800 bg-slate-100/60 dark:bg-gray-900/40 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-white">Ticket #{selectedAdminTicket.id}: {selectedAdminTicket.subject}</h4>
+                        <p className="text-[10px] text-gray-400">User: <span className="font-semibold text-cyanAccent">@{selectedAdminTicket.user_username}</span> ({selectedAdminTicket.user_full_name})</p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-gray-400 font-semibold uppercase">Status:</span>
+                        <select
+                          value={adminReplyStatus}
+                          onChange={(e) => handleAdminUpdateStatus(e.target.value)}
+                          className="p-1.5 rounded glass-input text-xs font-bold"
+                        >
+                          <option value="OPEN">OPEN</option>
+                          <option value="IN_PROGRESS">IN_PROGRESS</option>
+                          <option value="RESOLVED">RESOLVED</option>
+                          <option value="CLOSED">CLOSED</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Chat Messages */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                      {adminTicketDetails?.messages?.map((msg) => {
+                        const isAgent = msg.is_admin;
+                        return (
+                          <div key={msg.id} className={`flex ${isAgent ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`max-w-[85%] sm:max-w-[75%] rounded-xl p-3.5 text-left ${
+                              isAgent
+                                ? 'bg-cyanAccent/10 border border-cyanAccent/40 shadow-sm'
+                                : 'bg-white dark:bg-[#111827] border border-slate-200 dark:border-gray-800 shadow'
+                            }`}>
+                              <div className="flex items-center justify-between gap-4 text-[9px] font-semibold mb-1.5 border-b border-slate-200 dark:border-gray-800 pb-1">
+                                <span className={isAgent ? 'text-emeraldAccent font-bold' : 'text-cyanAccent font-bold'}>
+                                  {isAgent ? '🛡 Admin Reply (Support)' : `👤 User @${msg.sender_username || 'User'}`}
+                                </span>
+                                <span className="text-[8px] text-gray-400 font-normal">
+                                  {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+
+                              {msg.message && (
+                                <p className="text-xs text-slate-800 dark:text-gray-100 whitespace-pre-wrap leading-relaxed mb-2">{msg.message}</p>
+                              )}
+
+                              {msg.attachment && (
+                                <div className="mt-2 pt-2 border-t border-slate-200 dark:border-gray-800">
+                                  <div className="relative group inline-block overflow-hidden rounded-lg border border-cyanAccent/30 bg-black/40">
+                                    <img
+                                      src={msg.attachment}
+                                      alt="Attachment"
+                                      className="max-h-48 max-w-full object-cover cursor-pointer transition transform group-hover:scale-105"
+                                      onClick={() => setAdminLightboxImage(msg.attachment)}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => setAdminLightboxImage(msg.attachment)}
+                                      className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition text-xs font-semibold gap-1"
+                                    >
+                                      <Maximize2 size={16} /> View Full Image
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div ref={adminChatEndRef} />
+                    </div>
+
+                    {/* Admin Reply Input */}
+                    <div className="p-4 border-t border-slate-200 dark:border-gray-800 bg-slate-100/50 dark:bg-gray-900/50 space-y-3">
+                      {adminReplyFilePreview && (
+                        <div className="flex items-center gap-3 p-2 rounded bg-slate-200 dark:bg-gray-900 border border-cyanAccent/40">
+                          <img src={adminReplyFilePreview} alt="Preview" className="h-10 w-10 object-cover rounded border border-gray-700" />
+                          <div className="flex-1 min-w-0 text-[10px]">
+                            <p className="font-semibold text-slate-900 dark:text-white truncate">{adminReplyFile?.name}</p>
+                            <p className="text-gray-400">{(adminReplyFile?.size / 1024).toFixed(1)} KB</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleRemoveAdminReplyFile}
+                            className="p-1 text-gray-400 hover:text-red-400 transition"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      )}
+
+                      <form onSubmit={handleAdminSendReply} className="flex items-center gap-2">
+                        <input
+                          type="file"
+                          ref={adminReplyFileInputRef}
+                          onChange={handleSelectAdminReplyFile}
+                          accept="image/jpeg,image/png,image/webp,image/gif"
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => adminReplyFileInputRef.current?.click()}
+                          className={`p-2.5 rounded border transition flex items-center justify-center ${
+                            adminReplyFile
+                              ? 'bg-cyanAccent/20 border-cyanAccent text-cyanAccent'
+                              : 'border-slate-300 dark:border-gray-700 text-gray-400 hover:text-white hover:bg-slate-200 dark:hover:bg-gray-800'
+                          }`}
+                          title="Attach Image (JPG, PNG, WEBP, GIF max 10MB)"
+                        >
+                          <ImageIcon size={18} />
+                        </button>
+
+                        <input
+                          type="text"
+                          placeholder="Reply to user..."
+                          className="flex-1 p-2.5 rounded glass-input text-xs"
+                          value={adminReplyMessage}
+                          onChange={(e) => setAdminReplyMessage(e.target.value)}
+                        />
+
+                        <button
+                          type="submit"
+                          disabled={adminReplyLoading || (!adminReplyMessage.trim() && !adminReplyFile)}
+                          className="bg-cyanAccent text-black px-4 py-2.5 rounded font-bold text-xs hover:opacity-90 disabled:opacity-40 transition flex items-center justify-center cursor-pointer gap-1"
+                        >
+                          <Send size={16} /> Send Reply
+                        </button>
+                      </form>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center text-xs text-gray-500 py-12 px-4">
+                    <LifeBuoy size={44} className="text-gray-600 mb-2" />
+                    <p className="font-bold text-slate-900 dark:text-white">No Ticket Selected</p>
+                    <p className="text-[10px] text-gray-400">Select a support ticket from the list to view conversation history.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
 
       {/* USER EDIT/BALANCE DIALOG */}
@@ -2684,6 +3065,25 @@ const AdminDashboard = () => {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ADMIN LIGHTBOX IMAGE MODAL */}
+      {adminLightboxImage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+          <div className="relative max-w-4xl max-h-[90vh] flex flex-col items-center">
+            <button
+              onClick={() => setAdminLightboxImage(null)}
+              className="absolute -top-10 right-0 text-white hover:text-cyanAccent p-2 transition cursor-pointer"
+            >
+              <X size={24} />
+            </button>
+            <img
+              src={adminLightboxImage}
+              alt="Full Size View"
+              className="max-h-[85vh] max-w-full object-contain rounded-lg border border-slate-800 shadow-2xl"
+            />
           </div>
         </div>
       )}
